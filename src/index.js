@@ -236,7 +236,8 @@ async function finishLogin(request, env) {
   }
 }
 async function authenticate(request, env) {
-  const origin = request.headers.get("Origin") || "";
+  const requestOrigin = new URL(request.url).origin;
+  const origin = request.headers.get("Origin") || (requestOrigin === "https://home.horizensearch.com" ? requestOrigin : "");
   if (!allowedOrigin(origin)) return null;
   const auth = request.headers.get("Authorization") || "";
   if (!auth.startsWith("Bearer ")) return null;
@@ -253,7 +254,8 @@ async function authenticate(request, env) {
   return { session, system, userId: session.messages_user_id, origin };
 }
 async function api(request, env, url) {
-  const origin = request.headers.get("Origin") || "";
+  const requestOrigin = new URL(request.url).origin;
+  const origin = request.headers.get("Origin") || (requestOrigin === "https://home.horizensearch.com" ? requestOrigin : "");
   const cors = corsHeaders(origin);
   if (!allowedOrigin(origin)) return json({ error: "Origin not allowed." }, 403);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
