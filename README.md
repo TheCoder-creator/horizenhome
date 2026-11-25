@@ -61,3 +61,14 @@ The Worker only accepts the registered HorizenAI origin. Add another system to t
 ## Important
 
 This initial version connects identity and records a small amount of explicit app activity. It is not remote desktop software and cannot inspect a computer's full storage or control the operating system. A web page cannot directly read another origin's localStorage.
+
+## Dashboard
+
+The root URL serves the HorizenHome dashboard. Users sign in with the existing HorizenMessages OAuth client. The dashboard can list the signed-in user's systems, recent metadata events, and app/browser sessions, and can disable a system or revoke a session.
+
+Dashboard API routes:
+- GET /api/dashboard
+- POST /api/sessions/revoke
+- POST /api/systems/toggle
+
+The computer section represents registered browser/app sessions only. It does not scan devices, inspect files, or collect passwords. The optional HorizenFamily panel is informational until its separate integration and permissions are implemented.
