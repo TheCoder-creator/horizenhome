@@ -244,7 +244,7 @@ async function authenticate(request, env) {
   if (token.length < 30 || token.length > 200) return null;
   const hash = await sha256(token);
   const rows = await db(env,
-    "home_system_sessions?select=id,messages_user_id,expires_at,revoked_at,home_systems!inner(id,system_name,system_origin,enabled)&token_hash=eq." + encodeURIComponent(hash) + "&limit=1"
+    "home_system_sessions?select=id,messages_user_id,expires_at,revoked_at,home_systems!home_session_system_owner_fk!inner(id,system_name,system_origin,enabled)&token_hash=eq." + encodeURIComponent(hash) + "&limit=1"
   );
   const session = rows && rows[0];
   if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) return null;
