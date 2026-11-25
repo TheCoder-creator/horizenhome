@@ -364,7 +364,7 @@ async function api(request, env, url) {
 }
 
 function dashboardPage() {
-  const page = \`<!doctype html>
+  const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#070a09"><title>HorizenHome</title>
 <style>
@@ -425,7 +425,7 @@ var params=new URLSearchParams(location.search),hash=new URLSearchParams(locatio
 var incoming=hash.get("hz_home_token");if(incoming){token=incoming;localStorage.setItem(KEY,token);history.replaceState(null,"",location.pathname);}
 if(params.has("home_error"))showLogin("Messages sign-in did not complete. Please try again.");else if(token)load();else showLogin("");
 })();
-</script></body></html>\`;
+</script></body></html>`;
   return html(page,200,{"X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","Permissions-Policy":"camera=(), microphone=(), geolocation=()"});
 }
 
