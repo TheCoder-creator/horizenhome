@@ -2,7 +2,7 @@ const MESSAGES_URL = "https://wzfdomantqeaedfexpgq.supabase.co";
 const MESSAGES_KEY = "sb_publishable_vrz02Sm0olhxPqgc1MihJg_mrEMh7MG";
 const OAUTH_CLIENT_ID = "1c07850f-28fa-4d37-9dec-1b0ecb186baf";
 const OAUTH_REDIRECT = "https://home.horizensearch.com/oauth/callback";
-const SYSTEMS = Object.freeze({ HorizenAI: "https://ai.horizensearch.com" });
+const SYSTEMS = Object.freeze({ HorizenHome: "https://home.horizensearch.com", HorizenAI: "https://ai.horizensearch.com" });
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const COOKIE_NAME = "hz_home_oauth";
 const encoder = new TextEncoder();
@@ -260,6 +260,58 @@ async function api(request, env, url) {
   const identity = await authenticate(request, env);
   if (!identity) return json({ error: "Session is missing, expired, or revoked. Sign in again." }, 401, cors);
 
+  if (url.pathname === "/api/dashboard" && request.method === "GET") {
+    const uid = encodeURIComponent(identity.userId);
+    const [accounts, systems, sessions, events] = await Promise.all([
+      db(env, "home_accounts?select=email,display_name&messages_user_id=eq." + uid + "&limit=1"),
+      db(env, "home_systems?select=id,system_name,system_origin,enabled,created_at,last_seen_at&owner_messages_user_id=eq." + uid + "&order=created_at.asc"),
+      db(env, "home_system_sessions?select=id,created_at,expires_at,revoked_at,home_systems!home_session_system_owner_fk!inner(system_name,system_origin)&messages_user_id=eq." + uid + "&order=created_at.desc&limit=40"),
+      db(env, "home_events?select=id,event_type,event_data,created_at,home_systems!home_event_system_owner_fk!inner(system_name)&messages_user_id=eq." + uid + "&order=created_at.desc&limit=40")
+    ]);
+    return json({
+      account: accounts && accounts[0] || { email: null, displayName: null },
+      systems: systems || [],
+      sessions: sessions || [],
+      events: events || []
+    }, 200, cors);
+  }
+
+  if (url.pathname === "/api/sessions/revoke" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400, cors); }
+    if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)) return json({ error: "Invalid session ID." }, 400, cors);
+    await db(env, "home_system_sessions?id=eq." + encodeURIComponent(body.id) + "&messages_user_id=eq." + encodeURIComponent(identity.userId), {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({ revoked_at: new Date().toISOString() })
+    });
+    return json({ ok: true }, 200, cors);
+  }
+
+  if (url.pathname === "/api/systems/toggle" && request.method === "POST") {
+    let body;
+    try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400, cors); }
+    if (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id) || typeof body.enabled !== "boolean") {
+      return json({ error: "Invalid system update." }, 400, cors);
+    }
+    const uid = encodeURIComponent(identity.userId);
+    const id = encodeURIComponent(body.id);
+    const changed = await db(env, "home_systems?id=eq." + id + "&owner_messages_user_id=eq." + uid, {
+      method: "PATCH",
+      headers: { "Prefer": "return=representation" },
+      body: JSON.stringify({ enabled: body.enabled })
+    });
+    if (!changed || !changed.length) return json({ error: "System not found." }, 404, cors);
+    if (!body.enabled) {
+      await db(env, "home_system_sessions?system_id=eq." + id + "&messages_user_id=eq." + uid + "&revoked_at=is.null", {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        body: JSON.stringify({ revoked_at: new Date().toISOString() })
+      });
+    }
+    return json({ ok: true }, 200, cors);
+  }
+
   if (url.pathname === "/api/me" && request.method === "GET") {
     const accounts = await db(env, "home_accounts?select=email,display_name&messages_user_id=eq." + encodeURIComponent(identity.userId) + "&limit=1");
     await db(env, "home_systems?id=eq." + identity.system.id, {
@@ -311,14 +363,79 @@ async function api(request, env, url) {
   return json({ error: "Not found." }, 404, cors);
 }
 
+function dashboardPage() {
+  const page = \`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#070a09"><title>HorizenHome</title>
+<style>
+:root{color-scheme:dark;--bg:#070a09;--panel:#101713;--panel2:#141e18;--line:#24392e;--muted:#9aada2;--green:#00eb84;--red:#ff6577}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#0d2419 0,transparent 42%),var(--bg);color:#eaf4ee;font:15px Inter,system-ui,sans-serif;min-height:100vh}
+button{font:inherit;cursor:pointer}header{height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(22px,calc((100vw - 1180px)/2));background:#080d0aeF;position:sticky;top:0;z-index:3}
+.brand{font-size:22px;font-weight:800;color:var(--green);letter-spacing:-.7px}.brand span{color:#eaf4ee}.head-actions{display:flex;gap:10px;align-items:center}
+.btn{border:1px solid var(--line);background:#142019;color:#eaf4ee;border-radius:9px;padding:10px 14px;font-weight:650}.btn.primary{background:var(--green);color:#06130b;border-color:var(--green)}.btn.danger{color:#ff9eaa;border-color:#63313a;background:#251317}.btn:disabled{opacity:.5;cursor:not-allowed}
+main{max-width:1180px;margin:0 auto;padding:34px 22px 70px}.welcome{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:26px}.eyebrow{color:var(--green);font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase}h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1.4px;margin:8px 0 6px}.sub{color:var(--muted);line-height:1.6;margin:0}.status{font-size:12px;color:var(--green);border:1px solid #28553d;border-radius:99px;padding:8px 11px;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:15px}.card{background:linear-gradient(145deg,#111b15,#0d1410);border:1px solid var(--line);border-radius:15px;padding:19px;min-width:0}.span-8{grid-column:span 8}.span-4{grid-column:span 4}.span-12{grid-column:span 12}.card h2{font-size:16px;margin:0 0 5px}.hint{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 15px}.metric{font-size:32px;font-weight:800;color:var(--green);margin:10px 0 0}.item{padding:13px 0;border-top:1px solid #203127;display:flex;justify-content:space-between;gap:14px;align-items:center}.item:first-child{border-top:0}.item-title{font-weight:700}.item-meta{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.pill{font-size:10px;border:1px solid #28553d;color:var(--green);padding:5px 8px;border-radius:99px;white-space:nowrap}.pill.off{color:#ffb4bd;border-color:#63313a}.empty{padding:16px;border:1px dashed #304638;border-radius:10px;color:var(--muted);font-size:13px;line-height:1.6}.event{display:grid;grid-template-columns:1fr auto;gap:10px;padding:11px 0;border-top:1px solid #203127}.event:first-child{border-top:0}.event strong{font-size:13px}.event small{display:block;color:var(--muted);margin-top:4px}.family{display:flex;justify-content:space-between;align-items:center;gap:16px}.notice{font-size:12px;color:#b5c5bb;background:#111e16;border:1px solid #294331;padding:12px;border-radius:10px;line-height:1.6}.login{max-width:480px;margin:12vh auto;padding:30px}.login h1{font-size:34px}.login p{color:var(--muted);line-height:1.7}.hidden{display:none!important}.error{color:#ff9eaa;font-size:13px;margin-top:12px;line-height:1.5}.foot{color:#6f8276;font-size:11px;margin-top:24px;line-height:1.6}
+@media(max-width:760px){header{padding:0 16px}.welcome{align-items:flex-start;flex-direction:column}.span-8,.span-4{grid-column:span 12}.family{align-items:flex-start;flex-direction:column}}
+</style></head><body>
+<header><div class="brand">Horizen<span>Home</span></div><div class="head-actions"><span id="accountLabel" class="item-meta"></span><button id="signOut" class="btn hidden">Sign out</button></div></header>
+<main>
+<section id="loginPanel" class="card login"><div class="eyebrow">Your connected ecosystem</div><h1>One home for Horizen.</h1><p>Sign in securely with your existing HorizenMessages account to view your connected apps, sessions, and activity.</p><button id="loginBtn" class="btn primary">Continue with HorizenMessages</button><div id="loginError" class="error"></div><div class="foot">HorizenHome only receives information explicitly shared by connected apps. It does not scan your files or passwords.</div></section>
+<section id="dashboard" class="hidden">
+<div class="welcome"><div><div class="eyebrow">Personal control center</div><h1 id="welcomeTitle">Your Horizen system</h1><p class="sub">Manage the apps and browser sessions connected to your account.</p></div><div class="status">● Home services online</div></div>
+<div class="grid">
+<article class="card span-4"><h2>Connected systems</h2><p class="hint">Apps linked to this Messages account.</p><div class="metric" id="systemCount">0</div></article>
+<article class="card span-4"><h2>Active sessions</h2><p class="hint">Signed-in app/browser connections.</p><div class="metric" id="sessionCount">0</div></article>
+<article class="card span-4"><h2>Recent activity</h2><p class="hint">Metadata events shared by connected apps.</p><div class="metric" id="eventCount">0</div></article>
+<article class="card span-8"><h2>My systems</h2><p class="hint">Disable an app to revoke its current Home sessions. You can reconnect it later.</p><div id="systemsList" class="empty">Loading systems…</div></article>
+<article class="card span-4"><h2>Computer connections</h2><p class="hint">These are app/browser sessions, not a scan of your device.</p><div id="sessionsList" class="empty">Loading sessions…</div></article>
+<article class="card span-8"><h2>Activity timeline</h2><p class="hint">Only approved event names and limited metadata are stored.</p><div id="eventsList" class="empty">No activity yet.</div></article>
+<article class="card span-4"><h2>HorizenFamily</h2><p class="hint">Family controls are optional and separate from your personal Home account.</p><div class="notice">Family connection is not enabled yet. Your personal HorizenHome works without joining a family.</div></article>
+<article class="card span-12"><h2>Privacy and security</h2><div class="notice">HorizenHome stores your Messages account ID, connected-app registrations, hashed session tokens, and limited activity metadata. It does not collect chat contents, prompts, images, passwords, files, or a device fingerprint. Revoke sessions you no longer recognize.</div></article>
+</div><div id="dashError" class="error"></div><div class="foot">HorizenHome · Sessions expire after seven days. Signing out revokes this dashboard session.</div>
+</section></main>
+<script>
+(function(){
+"use strict";
+var KEY="hz_home_dashboard_token_v1",token=localStorage.getItem(KEY)||"";
+var $=function(id){return document.getElementById(id)};
+function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function date(v){try{return new Date(v).toLocaleString()}catch(e){return "Unknown"}}
+function showLogin(message){$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");$("signOut").classList.add("hidden");$("loginError").textContent=message||""}
+function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("signOut").classList.remove("hidden"); }
+function login(){location.href="/connect?system=HorizenHome&return="+encodeURIComponent(location.origin+"/")}
+async function api(path,opts){var r=await fetch(path,Object.assign({},opts||{},{headers:Object.assign({"Authorization":"Bearer "+token,"Content-Type":"application/json"},(opts&&opts.headers)||{})}));var d=await r.json().catch(function(){return {}});if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d}
+async function load(){
+ try{
+  var d=await api("/api/dashboard");
+  showDashboard();$("accountLabel").textContent=d.account.displayName||d.account.email||"Messages account";
+  $("welcomeTitle").textContent="Welcome"+(d.account.displayName?" back, "+d.account.displayName:" home");
+  $("systemCount").textContent=d.systems.length;$("sessionCount").textContent=d.sessions.filter(function(x){return !x.revoked_at&&new Date(x.expires_at).getTime()>Date.now()}).length;$("eventCount").textContent=d.events.length;
+  $("systemsList").className="";$("systemsList").innerHTML=d.systems.length?d.systems.map(function(s){return '<div class="item"><div><div class="item-title">'+esc(s.system_name)+'</div><div class="item-meta">'+esc(s.system_origin)+' · Last seen '+esc(s.last_seen_at?date(s.last_seen_at):"Not yet")+'</div></div><div style="display:flex;gap:8px;align-items:center"><span class="pill '+(s.enabled?"":"off")+'">'+(s.enabled?"Enabled":"Disabled")+'</span><button class="btn '+(s.enabled?"danger":"")+'" data-system="'+esc(s.id)+'" data-enabled="'+(s.enabled?"1":"0")+'">'+(s.enabled?"Disable":"Enable")+'</button></div></div>'}).join(""):'<div class="empty">No apps connected yet. Connect from a supported Horizen app.</div>':'<div class="empty">No systems registered.</div>';
+  $("sessionsList").className="";$("sessionsList").innerHTML=d.sessions.length?d.sessions.map(function(s){var active=!s.revoked_at&&new Date(s.expires_at).getTime()>Date.now();var app=s.home_systems&&s.home_systems.system_name||"App";return '<div class="item"><div><div class="item-title">'+esc(app)+'</div><div class="item-meta">'+(active?"Expires ":"Ended ")+esc(date(s.expires_at))+'</div></div>'+(active?'<button class="btn danger" data-session="'+esc(s.id)+'">Revoke</button>':'<span class="pill off">Ended</span>')+'</div>'}).join(""):'<div class="empty">No sessions found.</div>';
+  $("eventsList").className="";$("eventsList").innerHTML=d.events.length?d.events.map(function(e){var app=e.home_systems&&e.home_systems.system_name||"App";return '<div class="event"><div><strong>'+esc(e.event_type.replace(/_/g," "))+'</strong><small>'+esc(app)+'</small></div><small>'+esc(date(e.created_at))+'</small></div>'}).join(""):'<div class="empty">No activity has been shared yet.</div>';
+ }catch(e){if(/Session is missing|expired|revoked/i.test(e.message)){localStorage.removeItem(KEY);token="";showLogin("Your session expired. Please sign in again.");}else{$("dashError").textContent=e.message;showDashboard();}}
+}
+document.addEventListener("click",async function(e){
+ var b=e.target.closest("button[data-session],button[data-system]");if(!b)return;
+ try{b.disabled=true;if(b.dataset.session)await api("/api/sessions/revoke",{method:"POST",body:JSON.stringify({id:b.dataset.session})});else await api("/api/systems/toggle",{method:"POST",body:JSON.stringify({id:b.dataset.system,enabled:b.dataset.enabled!=="1"})});await load();}catch(err){$("dashError").textContent=err.message;b.disabled=false;}
+});
+$("loginBtn").addEventListener("click",login);
+$("signOut").addEventListener("click",async function(){try{await api("/api/logout",{method:"POST"})}catch(e){}localStorage.removeItem(KEY);token="";showLogin("You have signed out.");});
+var params=new URLSearchParams(location.search),hash=new URLSearchParams(location.hash.replace(/^#/,""));
+var incoming=hash.get("hz_home_token");if(incoming){token=incoming;localStorage.setItem(KEY,token);history.replaceState(null,"",location.pathname);}
+if(params.has("home_error"))showLogin("Messages sign-in did not complete. Please try again.");else if(token)load();else showLogin("");
+})();
+</script></body></html>\`;
+  return html(page,200,{"X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","Permissions-Policy":"camera=(), microphone=(), geolocation=()"});
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/health") return json({ ok: true, service: "HorizenHome" });
       if (url.pathname === "/") {
-        const page = "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>HorizenHome</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#070a09;color:#e8f5ef;font:16px system-ui;display:grid;place-items:center;padding:24px}main{max-width:620px;width:100%;padding:34px;border:1px solid #1b3b30;border-radius:18px;background:#0e1512;box-shadow:0 20px 80px #0008}h1{color:#00eb84;margin:0 0 8px;font-size:38px}p{color:#a6b8af;line-height:1.7}code{color:#00eb84}</style></head><body><main><h1>HorizenHome</h1><p>Your connected-system service is online.</p><p>Connect supported Horizen apps with the <code>HorizenMessages</code> sign-in button inside each app.</p><p>First connected system: <strong>HorizenAI</strong>.</p></main></body></html>";
-        return html(page);
+        return dashboardPage();
       }
       if (url.pathname === "/sdk.js" && request.method === "GET") {
         return new Response(sdk, {
