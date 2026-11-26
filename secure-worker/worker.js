@@ -66,6 +66,10 @@ function safeReturn(raw, origin) {
     return u.toString();
   } catch { return origin; }
 }
+function unlockedPage(system, target) {
+  const destination = escapeHtml(target);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="2;url=${destination}"><title>System unlocked</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#050807;color:#f4fff9;font:16px system-ui;padding:24px}.card{max-width:420px;padding:34px;border:1px solid #234a3b;border-radius:22px;background:#101d19;text-align:center}.mark{font-size:36px;color:#00eb84}p{color:#a7b9b0;line-height:1.6}a{color:#00eb84}</style></head><body><main class="card"><div class="mark">✓</div><h1>System unlocked</h1><p><strong>${escapeHtml(system)}</strong> has been unlocked successfully. Returning you to your system…</p><a href="${destination}">Continue now</a></main></body></html>`;
+}
 
 function headers() {
   return {
@@ -105,7 +109,11 @@ export default {
         body: JSON.stringify({ ticket, password, clientIp: request.headers.get("CF-Connecting-IP") || "unknown" })
       });
       if (response.ok && data.ok && data.redirect) {
-        return Response.redirect(safeReturn(returnRaw, data.redirect), 303);
+        const destination = safeReturn(returnRaw, data.redirect);
+        return new Response(unlockedPage(inspected.data.system || "Horizen system", destination), {
+          status: 200,
+          headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" }
+        });
       }
       const inspected = await homeRequest("/api/lock/service/inspect?ticket=" + encodeURIComponent(ticket), env.LOCK_SERVICE_SECRET);
       if (inspected.response.ok && inspected.data.found && !inspected.data.locked) {
