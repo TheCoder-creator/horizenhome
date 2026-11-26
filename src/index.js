@@ -52,10 +52,10 @@ async function signedCookie(payload, secret) {
   const encoded = b64url(encoder.encode(JSON.stringify(payload)));
   return encoded + "." + await sign(encoded, secret);
 }
-async function readSignedCookie(request, secret) {
-  const raw = (request.headers.get("Cookie") || "").split(";").map(x => x.trim()).find(x => x.startsWith(COOKIE_NAME + "="));
+async function readSignedCookie(request, secret, name = COOKIE_NAME) {
+  const raw = (request.headers.get("Cookie") || "").split(";").map(x => x.trim()).find(x => x.startsWith(name + "="));
   if (!raw) return null;
-  const value = raw.slice(COOKIE_NAME.length + 1);
+  const value = raw.slice(name.length + 1);
   const dot = value.lastIndexOf(".");
   if (dot < 1) return null;
   const encoded = value.slice(0, dot);
@@ -64,11 +64,11 @@ async function readSignedCookie(request, secret) {
   try { return JSON.parse(new TextDecoder().decode(fromB64url(encoded))); }
   catch { return null; }
 }
-function cookieHeader(value, maxAge = 600) {
-  return COOKIE_NAME + "=" + value + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + maxAge;
+function cookieHeader(value, maxAge = 600, name = COOKIE_NAME, path = "/") {
+  return name + "=" + value + "; Path=" + path + "; HttpOnly; Secure; SameSite=Lax; Max-Age=" + maxAge;
 }
-function clearCookie() {
-  return COOKIE_NAME + "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+function clearCookie(name = COOKIE_NAME, path = "/") {
+  return name + "=; Path=" + path + "; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
 }
 function allowedOrigin(origin) {
   try { const u = new URL(origin); return u.protocol === "https:" && u.origin === origin && !u.username && !u.password; }
@@ -138,8 +138,33 @@ async function startLogin(request, env) {
     headers: { "Location": authorize.toString(), "Set-Cookie": cookieHeader(cookie), "Cache-Control": "no-store" }
   });
 }
+async function finishFamilyLogin(request, env, cookie, url) {
+  const clearOAuth = clearCookie("hz_family_oauth", "/oauth/callback");
+  if (!cookie || cookie.flow !== "family" || Date.now() - cookie.createdAt > 600000) return html("<h2>Family sign-in expired. Please try again.</h2>", 400, { "Set-Cookie": clearOAuth });
+  if (url.searchParams.get("state") !== cookie.state) return html("<h2>Family sign-in state did not match.</h2>", 400, { "Set-Cookie": clearOAuth });
+  if (url.searchParams.get("error")) return new Response(null, { status: 302, headers: { "Location": "/?family_error=1", "Set-Cookie": clearOAuth, "Cache-Control": "no-store" } });
+  const code = url.searchParams.get("code");
+  if (!code) return html("<h2>Messages did not return a family login code.</h2>", 400, { "Set-Cookie": clearOAuth });
+  const tokenResponse = await fetch(MESSAGES_URL + "/auth/v1/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "apikey": MESSAGES_KEY }, body: new URLSearchParams({ grant_type: "authorization_code", code, client_id: OAUTH_CLIENT_ID, redirect_uri: OAUTH_REDIRECT, code_verifier: cookie.verifier }) });
+  if (!tokenResponse.ok) return html("<h2>Family Messages sign-in could not be completed.</h2>", 502, { "Set-Cookie": clearOAuth });
+  const tokens = await tokenResponse.json();
+  if (!tokens.access_token) return html("<h2>Messages did not provide an access token.</h2>", 502, { "Set-Cookie": clearOAuth });
+  const userResponse = await fetch(MESSAGES_URL + "/auth/v1/oauth/userinfo", { headers: { "Authorization": "Bearer " + tokens.access_token, "apikey": MESSAGES_KEY } });
+  if (!userResponse.ok) return html("<h2>Could not verify your Messages account.</h2>", 502, { "Set-Cookie": clearOAuth });
+  const user = await userResponse.json(), userId = user.sub || user.user_id || user.id;
+  if (!userId || userId !== cookie.expectedUserId) return html("<h2>Use the same Messages account for HorizenHome and Family.</h2>", 403, { "Set-Cookie": clearOAuth });
+  const email = typeof user.email === "string" ? user.email.slice(0, 320).trim().toLowerCase() : "";
+  if (!email || user.email_verified === false) return html("<h2>A verified Messages email is required for Family.</h2>", 403, { "Set-Cookie": clearOAuth });
+  const familyPayload = await signedCookie({ userId, email, displayName: String(user.name || user.full_name || "").slice(0, 120), createdAt: Date.now() }, env.HOME_SIGNING_SECRET || "");
+  const headers = new Headers({ "Location": "/?family_auth=success", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+  headers.append("Set-Cookie", cookieHeader(familyPayload, 14400, "hz_family_auth", "/"));
+  headers.append("Set-Cookie", clearOAuth);
+  return new Response(null, { status: 302, headers });
+}
 async function finishLogin(request, env) {
   const url = new URL(request.url);
+  const familyCookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "", "hz_family_oauth");
+  if (familyCookie && familyCookie.flow === "family") return await finishFamilyLogin(request, env, familyCookie, url);
   const cookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "");
   if (!cookie || Date.now() - cookie.createdAt > 10 * 60 * 1000) {
     return html("<h2>Login expired. Return to HorizenAI and try again.</h2>", 400, { "Set-Cookie": clearCookie() });
@@ -254,6 +279,135 @@ async function authenticate(request, env) {
   if (!system || !system.enabled || system.system_origin !== origin) return null;
   return { session, system, userId: session.messages_user_id, origin };
 }
+async function familyContext(request, env, identity) {
+  const auth = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "", "hz_family_auth");
+  if (!auth || auth.userId !== identity.userId || !auth.email || Date.now() - auth.createdAt > 14400000) return null;
+  const email = auth.email.toLowerCase();
+  let rows = await db(env, "horizen_accounts?select=id,username,email,display_name,avatar_color&email=eq." + encodeURIComponent(email) + "&limit=1");
+  let account = rows && rows[0];
+  if (!account) {
+    const base = String(auth.displayName || email.split("@")[0]).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) || "horizenuser";
+    const username = base + "_" + randomToken(5).replace(/[^a-z0-9]/gi, "").slice(0, 6).toLowerCase();
+    rows = await db(env, "horizen_accounts", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ username, email, password_hash: "messages:" + randomToken(24), display_name: auth.displayName || base }) });
+    account = rows && rows[0];
+    if (!account) { rows = await db(env, "horizen_accounts?select=id,username,email,display_name,avatar_color&email=eq." + encodeURIComponent(email) + "&limit=1"); account = rows && rows[0]; }
+  }
+  if (!account) throw new Error("Could not load your HorizenFamily profile.");
+  const memberships = await db(env, "family_members?select=id,family_id,account_id,role,joined_at&account_id=eq." + encodeURIComponent(account.id) + "&limit=1");
+  const membership = memberships && memberships[0] || null;
+  return { auth, account, membership, familyId: membership && membership.family_id || null, role: membership && membership.role || "parent" };
+}
+async function familyApi(request, env, url, identity, cors) {
+  const ctx = await familyContext(request, env, identity);
+  if (!ctx) return json({ error: "Sign in to HorizenFamily with Messages first." }, 401, cors);
+  const accountId = ctx.account.id, isParent = ctx.role === "parent";
+  const readBody = async () => { try { return await request.json(); } catch { return null; } };
+  const verifyChild = async id => {
+    if (!isParent || !ctx.familyId || typeof id !== "string") return false;
+    const rows = await db(env, "family_members?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(id) + "&role=eq.child&limit=1");
+    return !!(rows && rows.length);
+  };
+  if (url.pathname === "/api/family/logout" && request.method === "POST") return json({ ok: true }, 200, { ...cors, "Set-Cookie": clearCookie("hz_family_auth", "/") });
+  if (url.pathname === "/api/family/dashboard" && request.method === "GET") {
+    const invites = await db(env, "family_invites?select=id,family_id,from_account_id,to_account_id,status,created_at,role,from_account:horizen_accounts!family_invites_from_account_id_fkey(username,display_name),family:horizen_family(family_name)&to_account_id=eq." + encodeURIComponent(accountId) + "&order=created_at.desc&limit=20");
+    if (!ctx.membership) return json({ account: { id: accountId, username: ctx.account.username, display_name: ctx.account.display_name }, role: "parent", family: null, members: [], restrictions: [], invites: invites || [] }, 200, cors);
+    const familyRows = await db(env, "horizen_family?select=id,family_name,parent_account_id,created_at&id=eq." + encodeURIComponent(ctx.familyId) + "&limit=1");
+    const members = await db(env, "family_members?select=id,family_id,account_id,role,joined_at,account:horizen_accounts!family_members_account_id_fkey(id,username,display_name,avatar_color)&family_id=eq." + encodeURIComponent(ctx.familyId) + "&order=joined_at.asc");
+    const restrictions = isParent
+      ? await db(env, "family_restrictions?select=id,family_id,child_account_id,safe_search,screen_time_limit_minutes,blocked_urls,locked,location_tracking,updated_at&family_id=eq." + encodeURIComponent(ctx.familyId))
+      : await db(env, "family_restrictions?select=id,family_id,child_account_id,safe_search,screen_time_limit_minutes,blocked_urls,locked,location_tracking,updated_at&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(accountId));
+    return json({ account: { id: accountId, username: ctx.account.username, display_name: ctx.account.display_name }, role: ctx.role, family: familyRows && familyRows[0] || null, members: members || [], restrictions: restrictions || [], invites: invites || [] }, 200, cors);
+  }
+  if (url.pathname === "/api/family/create" && request.method === "POST") {
+    if (!isParent) return json({ error: "Only a parent can create a family." }, 403, cors);
+    if (ctx.familyId) return json({ error: "You already belong to a family." }, 409, cors);
+    const created = await db(env, "horizen_family", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ family_name: (ctx.account.display_name || ctx.account.username) + "'s Family", parent_account_id: accountId }) });
+    const family = created && created[0];
+    if (!family) return json({ error: "Could not create your family." }, 500, cors);
+    await db(env, "family_members", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: family.id, account_id: accountId, role: "parent" }) });
+    return json({ ok: true }, 200, cors);
+  }
+  if (url.pathname === "/api/family/invite/search" && request.method === "POST") {
+    if (!isParent || !ctx.familyId) return json({ error: "Create a family first. Only parents can invite members." }, 403, cors);
+    const data = await readBody(), q = String(data && data.query || "").trim().replace(/[*,()]/g, "");
+    if (q.length < 2 || q.length > 40) return json({ error: "Enter at least 2 characters." }, 400, cors);
+    const users = await db(env, "horizen_accounts?select=id,username,display_name,avatar_color&username=ilike.*" + encodeURIComponent(q) + "*&id=neq." + encodeURIComponent(accountId) + "&limit=8");
+    const [members, pending] = await Promise.all([
+      db(env, "family_members?select=account_id&family_id=eq." + encodeURIComponent(ctx.familyId)),
+      db(env, "family_invites?select=to_account_id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&status=eq.pending")
+    ]);
+    const memberIds = new Set((members || []).map(x => x.account_id)), pendingIds = new Set((pending || []).map(x => x.to_account_id));
+    return json({ users: (users || []).map(x => ({ ...x, is_member: memberIds.has(x.id), invited: pendingIds.has(x.id) })) }, 200, cors);
+  }
+  if (url.pathname === "/api/family/invite" && request.method === "POST") {
+    if (!isParent || !ctx.familyId) return json({ error: "Create a family first. Only parents can invite members." }, 403, cors);
+    const data = await readBody(), targetId = data && data.accountId, role = data && data.role;
+    if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId) || !["child", "parent"].includes(role) || targetId === accountId) return json({ error: "Invalid invitation." }, 400, cors);
+    const [member, pending] = await Promise.all([
+      db(env, "family_members?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(targetId) + "&limit=1"),
+      db(env, "family_invites?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&to_account_id=eq." + encodeURIComponent(targetId) + "&status=eq.pending&limit=1")
+    ]);
+    if (member && member.length) return json({ error: "That account is already in your family." }, 409, cors);
+    if (pending && pending.length) return json({ error: "An invitation is already pending." }, 409, cors);
+    await db(env, "family_invites", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: ctx.familyId, from_account_id: accountId, to_account_id: targetId, status: "pending", role }) });
+    return json({ ok: true }, 200, cors);
+  }
+  if (url.pathname === "/api/family/invite/respond" && request.method === "POST") {
+    const data = await readBody(), inviteId = data && data.id, status = data && data.status;
+    if (typeof inviteId !== "string" || !/^[0-9a-f-]{36}$/i.test(inviteId) || !["accepted", "declined"].includes(status)) return json({ error: "Invalid invitation response." }, 400, cors);
+    const rows = await db(env, "family_invites?select=id,family_id,role&id=eq." + encodeURIComponent(inviteId) + "&to_account_id=eq." + encodeURIComponent(accountId) + "&status=eq.pending&limit=1");
+    const invite = rows && rows[0];
+    if (!invite) return json({ error: "Invitation not found or already answered." }, 404, cors);
+    if (status === "accepted") {
+      const existing = await db(env, "family_members?select=id&account_id=eq." + encodeURIComponent(accountId) + "&limit=1");
+      if (existing && existing.length) return json({ error: "This account already belongs to a family." }, 409, cors);
+      await db(env, "family_members", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: invite.family_id, account_id: accountId, role: invite.role || "child" }) });
+    }
+    await db(env, "family_invites?id=eq." + encodeURIComponent(invite.id) + "&to_account_id=eq." + encodeURIComponent(accountId) + "&status=eq.pending", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ status }) });
+    return json({ ok: true }, 200, cors);
+  }
+  if (url.pathname === "/api/family/restriction" && request.method === "POST") {
+    if (!isParent || !ctx.familyId) return json({ error: "Only parents can change family controls." }, 403, cors);
+    const data = await readBody(), childId = data && data.childAccountId;
+    if (!(await verifyChild(childId))) return json({ error: "That child is not in your family." }, 403, cors);
+    const patch = {};
+    for (const key of ["safe_search", "locked", "location_tracking"]) if (typeof data[key] === "boolean") patch[key] = data[key];
+    if (Number.isInteger(data.screen_time_limit_minutes) && data.screen_time_limit_minutes >= 0 && data.screen_time_limit_minutes <= 1440) patch.screen_time_limit_minutes = data.screen_time_limit_minutes;
+    if (Array.isArray(data.blocked_urls)) patch.blocked_urls = data.blocked_urls.filter(x => typeof x === "string").slice(0, 100).map(x => x.trim().slice(0, 180)).filter(Boolean);
+    if (!Object.keys(patch).length) return json({ error: "No valid control settings were provided." }, 400, cors);
+    const existing = await db(env, "family_restrictions?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(childId) + "&limit=1");
+    if (existing && existing[0]) await db(env, "family_restrictions?id=eq." + encodeURIComponent(existing[0].id), { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
+    else await db(env, "family_restrictions", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: ctx.familyId, child_account_id: childId, ...patch }) });
+    return json({ ok: true }, 200, cors);
+  }
+  if (url.pathname === "/api/family/activity" && request.method === "GET") {
+    const childId = url.searchParams.get("child");
+    if (!(await verifyChild(childId))) return json({ error: "You cannot view activity for that account." }, 403, cors);
+    const since = new Date(Date.now() - 7 * 86400000).toISOString();
+    const [apps, searches, screen] = await Promise.all([
+      db(env, "account_app_history?select=id,app_name,app_url,opened_at&account_id=eq." + encodeURIComponent(childId) + "&opened_at=gte." + encodeURIComponent(since) + "&order=opened_at.desc&limit=30"),
+      db(env, "account_search_history?select=id,query,searched_at&account_id=eq." + encodeURIComponent(childId) + "&searched_at=gte." + encodeURIComponent(since) + "&order=searched_at.desc&limit=30"),
+      db(env, "screen_time_logs?select=date,minutes_used&account_id=eq." + encodeURIComponent(childId) + "&order=date.desc&limit=7")
+    ]);
+    return json({ apps: apps || [], searches: searches || [], screenTime: screen || [] }, 200, cors);
+  }
+  if (url.pathname === "/api/family/location" && request.method === "GET") {
+    const childId = url.searchParams.get("child");
+    if (!(await verifyChild(childId))) return json({ error: "You cannot view that location." }, 403, cors);
+    const restrictions = await db(env, "family_restrictions?select=location_tracking&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(childId) + "&limit=1");
+    if (!restrictions || !restrictions[0] || restrictions[0].location_tracking !== true) return json({ error: "Location sharing is turned off for this family member." }, 403, cors);
+    const locations = await db(env, "child_locations?select=id,latitude,longitude,accuracy,recorded_at&account_id=eq." + encodeURIComponent(childId) + "&order=recorded_at.desc&limit=10");
+    return json({ locations: locations || [] }, 200, cors);
+  }
+  if (url.pathname === "/api/family/member/remove" && request.method === "POST") {
+    if (!isParent || !ctx.familyId) return json({ error: "Only parents can remove members." }, 403, cors);
+    const data = await readBody(), childId = data && data.accountId;
+    if (typeof childId !== "string" || childId === accountId || !(await verifyChild(childId))) return json({ error: "That child cannot be removed." }, 403, cors);
+    await db(env, "family_members?family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(childId), { method: "DELETE", headers: { "Prefer": "return=minimal" } });
+    return json({ ok: true }, 200, cors);
+  }
+  return json({ error: "Family endpoint not found." }, 404, cors);
+}
 async function api(request, env, url) {
   const requestOrigin = new URL(request.url).origin;
   const origin = request.headers.get("Origin") || (requestOrigin === "https://home.horizensearch.com" ? requestOrigin : "");
@@ -310,6 +464,16 @@ async function api(request, env, url) {
 
   const identity = await authenticate(request, env);
   if (!identity) return json({ error: "Session is missing, expired, or revoked. Sign in again." }, 401, cors);
+  if (url.pathname === "/api/family/auth/start" && request.method === "POST") {
+    if (!env.HOME_SIGNING_SECRET || env.HOME_SIGNING_SECRET.length < 32) return json({ error: "Family sign-in is not configured." }, 503, cors);
+    const state = randomToken(24), verifier = randomToken(32);
+    const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(verifier))));
+    const signed = await signedCookie({ flow: "family", state, verifier, expectedUserId: identity.userId, createdAt: Date.now() }, env.HOME_SIGNING_SECRET);
+    const authorize = new URL(MESSAGES_URL + "/auth/v1/oauth/authorize");
+    authorize.search = new URLSearchParams({ response_type: "code", client_id: OAUTH_CLIENT_ID, redirect_uri: OAUTH_REDIRECT, state, code_challenge: challenge, code_challenge_method: "S256", scope: "openid email profile" }).toString();
+    return json({ url: authorize.toString() }, 200, { ...cors, "Set-Cookie": cookieHeader(signed, 600, "hz_family_oauth", "/oauth/callback") });
+  }
+
   if (url.pathname === "/api/lock/context" && request.method === "POST") {
     let body; try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400, cors); }
     if (!identity.system.locked) return json({ locked: false }, 200, cors);
@@ -338,6 +502,8 @@ async function api(request, env, url) {
     return json({ locked: !!identity.system.locked, system: identity.system.system_name, origin: identity.system.system_origin, message: messages && messages[0] || null }, 200, cors);
   }
   if (identity.system.locked) return json({ error: "This system is locked.", locked: true, lockUrl: "https://secure.horizensearch.com/?system=" + encodeURIComponent(identity.system.system_origin) }, 423, cors);
+
+  if (url.pathname.startsWith("/api/family/")) return await familyApi(request, env, url, identity, cors);
 
   if (url.pathname === "/api/dashboard" && request.method === "GET") {
     const uid = encodeURIComponent(identity.userId);
