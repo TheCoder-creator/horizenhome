@@ -6,7 +6,7 @@ const SYSTEMS = Object.freeze({ HorizenHome: "https://home.horizensearch.com", H
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const COOKIE_NAME = "hz_home_oauth";
 const encoder = new TextEncoder();
-const sdk = "(function () {\n  \"use strict\";\n  const HOME = \"https://home.horizensearch.com\";\n  const STORAGE_KEY = \"hz_home_session_v1\";\n  let token = \"\";\n  let connected = false;\n  function button() { return document.getElementById(\"homeAccountBtn\"); }\n  function setButton(text, title) {\n    const el = button();\n    if (el) {\n      el.innerHTML = '<i class=\"fas fa-house\"></i> ' + text;\n      el.title = title || text;\n      el.classList.toggle(\"active\", connected);\n    }\n  }\n  async function request(path, options) {\n    return fetch(HOME + path, {\n      ...options,\n      headers: { ...(options && options.headers || {}), \"Authorization\": \"Bearer \" + token }\n    });\n  }\n  function connect() {\n    const names = { \"https://ai.horizensearch.com\": \"HorizenAI\", \"https://horizensearch.com\": \"Horizen OS\", \"https://play.horizensearch.com\": \"Horizen Play\", \"https://pages.horizensearch.com\": \"Horizen Pages\" };\n    const system = names[location.origin];\n    if (!system) { alert(\"This Horizen app is not registered with HorizenHome.\"); return; }\n    const back = location.origin + location.pathname + location.search;\n    location.assign(HOME + \"/connect?system=\" + encodeURIComponent(system) + \"&return=\" + encodeURIComponent(back));\n  }\n  async function secureRedirect() {\n    try {\n      const response = await request(\"/api/lock/context\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ returnUrl: location.href })\n      });\n      if (!response.ok) return;\n      const data = await response.json();\n      if (data.url) location.assign(data.url);\n    } catch (_) {}\n  }\n  async function me() {\n    if (!token) return null;\n    const response = await request(\"/api/me\", { method: \"GET\" });\n    if (response.status === 423) {\n      await secureRedirect();\n      return null;\n    }\n    if (!response.ok) {\n      token = \"\";\n      connected = false;\n      localStorage.removeItem(STORAGE_KEY);\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n      return null;\n    }\n    connected = true;\n    const data = await response.json();\n    setButton(\"Home ✓\", \"Connected to HorizenHome. Click to disconnect.\");\n    return data;\n  }\n  async function track(type, data) {\n    if (!token || !connected) return;\n    try {\n      await request(\"/api/events\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ type, data: data || {} })\n      });\n    } catch (_) {}\n  }\n  async function pollLock() {\n    if (!token || !connected) return;\n    try {\n      const response = await request(\"/api/lock/poll\", { method: \"GET\" });\n      if (!response.ok) return;\n      const status = await response.json();\n      if (status.locked) await secureRedirect();\n    } catch (_) {}\n  }\n  async function logout() {\n    if (token) {\n      try { await request(\"/api/logout\", { method: \"POST\" }); } catch (_) {}\n    }\n    localStorage.removeItem(STORAGE_KEY);\n    token = \"\";\n    connected = false;\n    setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n  }\n  async function init() {\n    const hash = new URLSearchParams(location.hash.replace(/^#/, \"\"));\n    const incoming = hash.get(\"hz_home_token\");\n    if (incoming) {\n      token = incoming;\n      localStorage.setItem(STORAGE_KEY, token);\n      history.replaceState(null, \"\", location.pathname + location.search);\n    } else {\n      token = localStorage.getItem(STORAGE_KEY) || \"\";\n    }\n    const el = button();\n    if (el) {\n      el.addEventListener(\"click\", async function () {\n        if (!connected) return connect();\n        if (confirm(\"Disconnect this browser from HorizenHome?\")) await logout();\n      });\n    }\n    if (token) {\n      const profile = await me();\n      if (profile) {\n        await track(\"app_opened\", { path: location.pathname });\n        setInterval(pollLock, 2000);\n      }\n    } else {\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n    }\n  }\n  window.HorizenHome = { init, connect, me, track, logout, isConnected: () => connected };\n  if (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", init, { once: true });\n  else init();\n})();"
+const sdk = "(function () {\n  \"use strict\";\n  const HOME = \"https://home.horizensearch.com\";\n  const STORAGE_KEY = \"hz_home_session_v1\";\n  let token = \"\";\n  let connected = false;\n  function button() { return document.getElementById(\"homeAccountBtn\"); }\n  function setButton(text, title) {\n    const el = button();\n    if (el) {\n      el.innerHTML = '<i class=\"fas fa-house\"></i> ' + text;\n      el.title = title || text;\n      el.classList.toggle(\"active\", connected);\n    }\n  }\n  async function request(path, options) {\n    return fetch(HOME + path, {\n      ...options,\n      headers: { ...(options && options.headers || {}), \"Authorization\": \"Bearer \" + token }\n    });\n  }\n  function connect() {\n    const back = location.origin + location.pathname + location.search;\n    location.assign(HOME + \"/connect?system=HorizenAI&return=\" + encodeURIComponent(back));\n  }\n  async function secureRedirect() {\n    try {\n      const response = await request(\"/api/lock/context\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ returnUrl: location.href })\n      });\n      if (!response.ok) return;\n      const data = await response.json();\n      if (data.url) location.assign(data.url);\n    } catch (_) {}\n  }\n  async function me() {\n    if (!token) return null;\n    const response = await request(\"/api/me\", { method: \"GET\" });\n    if (response.status === 423) {\n      await secureRedirect();\n      return null;\n    }\n    if (!response.ok) {\n      token = \"\";\n      connected = false;\n      localStorage.removeItem(STORAGE_KEY);\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n      return null;\n    }\n    connected = true;\n    const data = await response.json();\n    setButton(\"Home ✓\", \"Connected to HorizenHome. Click to disconnect.\");\n    return data;\n  }\n  async function track(type, data) {\n    if (!token || !connected) return;\n    try {\n      await request(\"/api/events\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ type, data: data || {} })\n      });\n    } catch (_) {}\n  }\n  async function pollLock() {\n    if (!token || !connected) return;\n    try {\n      const response = await request(\"/api/lock/poll\", { method: \"GET\" });\n      if (!response.ok) return;\n      const status = await response.json();\n      if (status.locked) await secureRedirect();\n    } catch (_) {}\n  }\n  async function logout() {\n    if (token) {\n      try { await request(\"/api/logout\", { method: \"POST\" }); } catch (_) {}\n    }\n    localStorage.removeItem(STORAGE_KEY);\n    token = \"\";\n    connected = false;\n    setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n  }\n  async function init() {\n    const hash = new URLSearchParams(location.hash.replace(/^#/, \"\"));\n    const incoming = hash.get(\"hz_home_token\");\n    if (incoming) {\n      token = incoming;\n      localStorage.setItem(STORAGE_KEY, token);\n      history.replaceState(null, \"\", location.pathname + location.search);\n    } else {\n      token = localStorage.getItem(STORAGE_KEY) || \"\";\n    }\n    const el = button();\n    if (el) {\n      el.addEventListener(\"click\", async function () {\n        if (!connected) return connect();\n        if (confirm(\"Disconnect this browser from HorizenHome?\")) await logout();\n      });\n    }\n    if (token) {\n      const profile = await me();\n      if (profile) {\n        await track(\"app_opened\", { path: location.pathname });\n        setInterval(pollLock, 2000);\n      }\n    } else {\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n    }\n  }\n  window.HorizenHome = { init, connect, me, track, logout, isConnected: () => connected };\n  if (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", init, { once: true });\n  else init();\n})();"
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -52,10 +52,10 @@ async function signedCookie(payload, secret) {
   const encoded = b64url(encoder.encode(JSON.stringify(payload)));
   return encoded + "." + await sign(encoded, secret);
 }
-async function readSignedCookie(request, secret, name = COOKIE_NAME) {
-  const raw = (request.headers.get("Cookie") || "").split(";").map(x => x.trim()).find(x => x.startsWith(name + "="));
+async function readSignedCookie(request, secret) {
+  const raw = (request.headers.get("Cookie") || "").split(";").map(x => x.trim()).find(x => x.startsWith(COOKIE_NAME + "="));
   if (!raw) return null;
-  const value = raw.slice(name.length + 1);
+  const value = raw.slice(COOKIE_NAME.length + 1);
   const dot = value.lastIndexOf(".");
   if (dot < 1) return null;
   const encoded = value.slice(0, dot);
@@ -64,11 +64,11 @@ async function readSignedCookie(request, secret, name = COOKIE_NAME) {
   try { return JSON.parse(new TextDecoder().decode(fromB64url(encoded))); }
   catch { return null; }
 }
-function cookieHeader(value, maxAge = 600, name = COOKIE_NAME, path = "/") {
-  return name + "=" + value + "; Path=" + path + "; HttpOnly; Secure; SameSite=Lax; Max-Age=" + maxAge;
+function cookieHeader(value, maxAge = 600) {
+  return COOKIE_NAME + "=" + value + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + maxAge;
 }
-function clearCookie(name = COOKIE_NAME, path = "/") {
-  return name + "=; Path=" + path + "; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
+function clearCookie() {
+  return COOKIE_NAME + "=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
 }
 function allowedOrigin(origin) {
   try { const u = new URL(origin); return u.protocol === "https:" && u.origin === origin && !u.username && !u.password; }
@@ -138,33 +138,8 @@ async function startLogin(request, env) {
     headers: { "Location": authorize.toString(), "Set-Cookie": cookieHeader(cookie), "Cache-Control": "no-store" }
   });
 }
-async function finishFamilyLogin(request, env, cookie, url) {
-  const clearOAuth = clearCookie("hz_family_oauth", "/oauth/callback");
-  if (!cookie || cookie.flow !== "family" || Date.now() - cookie.createdAt > 600000) return html("<h2>Family sign-in expired. Please try again.</h2>", 400, { "Set-Cookie": clearOAuth });
-  if (url.searchParams.get("state") !== cookie.state) return html("<h2>Family sign-in state did not match.</h2>", 400, { "Set-Cookie": clearOAuth });
-  if (url.searchParams.get("error")) return new Response(null, { status: 302, headers: { "Location": "/?family_error=1", "Set-Cookie": clearOAuth, "Cache-Control": "no-store" } });
-  const code = url.searchParams.get("code");
-  if (!code) return html("<h2>Messages did not return a family login code.</h2>", 400, { "Set-Cookie": clearOAuth });
-  const tokenResponse = await fetch(MESSAGES_URL + "/auth/v1/oauth/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", "apikey": MESSAGES_KEY }, body: new URLSearchParams({ grant_type: "authorization_code", code, client_id: OAUTH_CLIENT_ID, redirect_uri: OAUTH_REDIRECT, code_verifier: cookie.verifier }) });
-  if (!tokenResponse.ok) return html("<h2>Family Messages sign-in could not be completed.</h2>", 502, { "Set-Cookie": clearOAuth });
-  const tokens = await tokenResponse.json();
-  if (!tokens.access_token) return html("<h2>Messages did not provide an access token.</h2>", 502, { "Set-Cookie": clearOAuth });
-  const userResponse = await fetch(MESSAGES_URL + "/auth/v1/oauth/userinfo", { headers: { "Authorization": "Bearer " + tokens.access_token, "apikey": MESSAGES_KEY } });
-  if (!userResponse.ok) return html("<h2>Could not verify your Messages account.</h2>", 502, { "Set-Cookie": clearOAuth });
-  const user = await userResponse.json(), userId = user.sub || user.user_id || user.id;
-  if (!userId || userId !== cookie.expectedUserId) return html("<h2>Use the same Messages account for HorizenHome and Family.</h2>", 403, { "Set-Cookie": clearOAuth });
-  const email = typeof user.email === "string" ? user.email.slice(0, 320).trim().toLowerCase() : "";
-  if (!email || user.email_verified === false) return html("<h2>A verified Messages email is required for Family.</h2>", 403, { "Set-Cookie": clearOAuth });
-  const familyPayload = await signedCookie({ userId, email, displayName: String(user.name || user.full_name || "").slice(0, 120), createdAt: Date.now() }, env.HOME_SIGNING_SECRET || "");
-  const headers = new Headers({ "Location": "/?family_auth=success", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
-  headers.append("Set-Cookie", cookieHeader(familyPayload, 14400, "hz_family_auth", "/"));
-  headers.append("Set-Cookie", clearOAuth);
-  return new Response(null, { status: 302, headers });
-}
 async function finishLogin(request, env) {
   const url = new URL(request.url);
-  const familyCookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "", "hz_family_oauth");
-  if (familyCookie && familyCookie.flow === "family" && url.searchParams.get("state") === familyCookie.state) return await finishFamilyLogin(request, env, familyCookie, url);
   const cookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "");
   if (!cookie || Date.now() - cookie.createdAt > 10 * 60 * 1000) {
     return html("<h2>Login expired. Return to HorizenAI and try again.</h2>", 400, { "Set-Cookie": clearCookie() });
@@ -279,135 +254,6 @@ async function authenticate(request, env) {
   if (!system || !system.enabled || system.system_origin !== origin) return null;
   return { session, system, userId: session.messages_user_id, origin };
 }
-async function familyContext(request, env, identity) {
-  const auth = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "", "hz_family_auth");
-  if (!auth || auth.userId !== identity.userId || !auth.email || Date.now() - auth.createdAt > 14400000) return null;
-  const email = auth.email.toLowerCase();
-  let rows = await db(env, "horizen_accounts?select=id,username,email,display_name,avatar_color&email=eq." + encodeURIComponent(email) + "&limit=1");
-  let account = rows && rows[0];
-  if (!account) {
-    const base = String(auth.displayName || email.split("@")[0]).toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 20) || "horizenuser";
-    const username = base + "_" + randomToken(5).replace(/[^a-z0-9]/gi, "").slice(0, 6).toLowerCase();
-    rows = await db(env, "horizen_accounts", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ username, email, password_hash: "messages:" + randomToken(24), display_name: auth.displayName || base }) });
-    account = rows && rows[0];
-    if (!account) { rows = await db(env, "horizen_accounts?select=id,username,email,display_name,avatar_color&email=eq." + encodeURIComponent(email) + "&limit=1"); account = rows && rows[0]; }
-  }
-  if (!account) throw new Error("Could not load your HorizenFamily profile.");
-  const memberships = await db(env, "family_members?select=id,family_id,account_id,role,joined_at&account_id=eq." + encodeURIComponent(account.id) + "&limit=1");
-  const membership = memberships && memberships[0] || null;
-  return { auth, account, membership, familyId: membership && membership.family_id || null, role: membership && membership.role || "parent" };
-}
-async function familyApi(request, env, url, identity, cors) {
-  const ctx = await familyContext(request, env, identity);
-  if (!ctx) return json({ error: "Sign in to HorizenFamily with Messages first." }, 401, cors);
-  const accountId = ctx.account.id, isParent = ctx.role === "parent";
-  const readBody = async () => { try { return await request.json(); } catch { return null; } };
-  const verifyChild = async id => {
-    if (!isParent || !ctx.familyId || typeof id !== "string") return false;
-    const rows = await db(env, "family_members?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(id) + "&role=eq.child&limit=1");
-    return !!(rows && rows.length);
-  };
-  if (url.pathname === "/api/family/logout" && request.method === "POST") return json({ ok: true }, 200, { ...cors, "Set-Cookie": clearCookie("hz_family_auth", "/") });
-  if (url.pathname === "/api/family/dashboard" && request.method === "GET") {
-    const invites = await db(env, "family_invites?select=id,family_id,from_account_id,to_account_id,status,created_at,role,from_account:horizen_accounts!family_invites_from_account_id_fkey(username,display_name),family:horizen_family(family_name)&to_account_id=eq." + encodeURIComponent(accountId) + "&order=created_at.desc&limit=20");
-    if (!ctx.membership) return json({ account: { id: accountId, username: ctx.account.username, display_name: ctx.account.display_name }, role: "parent", family: null, members: [], restrictions: [], invites: invites || [] }, 200, cors);
-    const familyRows = await db(env, "horizen_family?select=id,family_name,parent_account_id,created_at&id=eq." + encodeURIComponent(ctx.familyId) + "&limit=1");
-    const members = await db(env, "family_members?select=id,family_id,account_id,role,joined_at,account:horizen_accounts!family_members_account_id_fkey(id,username,display_name,avatar_color)&family_id=eq." + encodeURIComponent(ctx.familyId) + "&order=joined_at.asc");
-    const restrictions = isParent
-      ? await db(env, "family_restrictions?select=id,family_id,child_account_id,safe_search,screen_time_limit_minutes,blocked_urls,locked,location_tracking,updated_at&family_id=eq." + encodeURIComponent(ctx.familyId))
-      : await db(env, "family_restrictions?select=id,family_id,child_account_id,safe_search,screen_time_limit_minutes,blocked_urls,locked,location_tracking,updated_at&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(accountId));
-    return json({ account: { id: accountId, username: ctx.account.username, display_name: ctx.account.display_name }, role: ctx.role, family: familyRows && familyRows[0] || null, members: members || [], restrictions: restrictions || [], invites: invites || [] }, 200, cors);
-  }
-  if (url.pathname === "/api/family/create" && request.method === "POST") {
-    if (!isParent) return json({ error: "Only a parent can create a family." }, 403, cors);
-    if (ctx.familyId) return json({ error: "You already belong to a family." }, 409, cors);
-    const created = await db(env, "horizen_family", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ family_name: (ctx.account.display_name || ctx.account.username) + "'s Family", parent_account_id: accountId }) });
-    const family = created && created[0];
-    if (!family) return json({ error: "Could not create your family." }, 500, cors);
-    await db(env, "family_members", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: family.id, account_id: accountId, role: "parent" }) });
-    return json({ ok: true }, 200, cors);
-  }
-  if (url.pathname === "/api/family/invite/search" && request.method === "POST") {
-    if (!isParent || !ctx.familyId) return json({ error: "Create a family first. Only parents can invite members." }, 403, cors);
-    const data = await readBody(), q = String(data && data.query || "").trim().replace(/[*,()]/g, "");
-    if (q.length < 2 || q.length > 40) return json({ error: "Enter at least 2 characters." }, 400, cors);
-    const users = await db(env, "horizen_accounts?select=id,username,display_name,avatar_color&username=ilike.*" + encodeURIComponent(q) + "*&id=neq." + encodeURIComponent(accountId) + "&limit=8");
-    const [members, pending] = await Promise.all([
-      db(env, "family_members?select=account_id&family_id=eq." + encodeURIComponent(ctx.familyId)),
-      db(env, "family_invites?select=to_account_id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&status=eq.pending")
-    ]);
-    const memberIds = new Set((members || []).map(x => x.account_id)), pendingIds = new Set((pending || []).map(x => x.to_account_id));
-    return json({ users: (users || []).map(x => ({ ...x, is_member: memberIds.has(x.id), invited: pendingIds.has(x.id) })) }, 200, cors);
-  }
-  if (url.pathname === "/api/family/invite" && request.method === "POST") {
-    if (!isParent || !ctx.familyId) return json({ error: "Create a family first. Only parents can invite members." }, 403, cors);
-    const data = await readBody(), targetId = data && data.accountId, role = data && data.role;
-    if (typeof targetId !== "string" || !/^[0-9a-f-]{36}$/i.test(targetId) || !["child", "parent"].includes(role) || targetId === accountId) return json({ error: "Invalid invitation." }, 400, cors);
-    const [member, pending] = await Promise.all([
-      db(env, "family_members?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(targetId) + "&limit=1"),
-      db(env, "family_invites?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&to_account_id=eq." + encodeURIComponent(targetId) + "&status=eq.pending&limit=1")
-    ]);
-    if (member && member.length) return json({ error: "That account is already in your family." }, 409, cors);
-    if (pending && pending.length) return json({ error: "An invitation is already pending." }, 409, cors);
-    await db(env, "family_invites", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: ctx.familyId, from_account_id: accountId, to_account_id: targetId, status: "pending", role }) });
-    return json({ ok: true }, 200, cors);
-  }
-  if (url.pathname === "/api/family/invite/respond" && request.method === "POST") {
-    const data = await readBody(), inviteId = data && data.id, status = data && data.status;
-    if (typeof inviteId !== "string" || !/^[0-9a-f-]{36}$/i.test(inviteId) || !["accepted", "declined"].includes(status)) return json({ error: "Invalid invitation response." }, 400, cors);
-    const rows = await db(env, "family_invites?select=id,family_id,role&id=eq." + encodeURIComponent(inviteId) + "&to_account_id=eq." + encodeURIComponent(accountId) + "&status=eq.pending&limit=1");
-    const invite = rows && rows[0];
-    if (!invite) return json({ error: "Invitation not found or already answered." }, 404, cors);
-    if (status === "accepted") {
-      const existing = await db(env, "family_members?select=id&account_id=eq." + encodeURIComponent(accountId) + "&limit=1");
-      if (existing && existing.length) return json({ error: "This account already belongs to a family." }, 409, cors);
-      await db(env, "family_members", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: invite.family_id, account_id: accountId, role: invite.role || "child" }) });
-    }
-    await db(env, "family_invites?id=eq." + encodeURIComponent(invite.id) + "&to_account_id=eq." + encodeURIComponent(accountId) + "&status=eq.pending", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ status }) });
-    return json({ ok: true }, 200, cors);
-  }
-  if (url.pathname === "/api/family/restriction" && request.method === "POST") {
-    if (!isParent || !ctx.familyId) return json({ error: "Only parents can change family controls." }, 403, cors);
-    const data = await readBody(), childId = data && data.childAccountId;
-    if (!(await verifyChild(childId))) return json({ error: "That child is not in your family." }, 403, cors);
-    const patch = {};
-    for (const key of ["safe_search", "locked", "location_tracking"]) if (typeof data[key] === "boolean") patch[key] = data[key];
-    if (Number.isInteger(data.screen_time_limit_minutes) && data.screen_time_limit_minutes >= 0 && data.screen_time_limit_minutes <= 1440) patch.screen_time_limit_minutes = data.screen_time_limit_minutes;
-    if (Array.isArray(data.blocked_urls)) patch.blocked_urls = data.blocked_urls.filter(x => typeof x === "string").slice(0, 100).map(x => x.trim().slice(0, 180)).filter(Boolean);
-    if (!Object.keys(patch).length) return json({ error: "No valid control settings were provided." }, 400, cors);
-    const existing = await db(env, "family_restrictions?select=id&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(childId) + "&limit=1");
-    if (existing && existing[0]) await db(env, "family_restrictions?id=eq." + encodeURIComponent(existing[0].id), { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
-    else await db(env, "family_restrictions", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ family_id: ctx.familyId, child_account_id: childId, ...patch }) });
-    return json({ ok: true }, 200, cors);
-  }
-  if (url.pathname === "/api/family/activity" && request.method === "GET") {
-    const childId = url.searchParams.get("child");
-    if (!(await verifyChild(childId))) return json({ error: "You cannot view activity for that account." }, 403, cors);
-    const since = new Date(Date.now() - 7 * 86400000).toISOString();
-    const [apps, searches, screen] = await Promise.all([
-      db(env, "account_app_history?select=id,app_name,app_url,opened_at&account_id=eq." + encodeURIComponent(childId) + "&opened_at=gte." + encodeURIComponent(since) + "&order=opened_at.desc&limit=30"),
-      db(env, "account_search_history?select=id,query,searched_at&account_id=eq." + encodeURIComponent(childId) + "&searched_at=gte." + encodeURIComponent(since) + "&order=searched_at.desc&limit=30"),
-      db(env, "screen_time_logs?select=date,minutes_used&account_id=eq." + encodeURIComponent(childId) + "&order=date.desc&limit=7")
-    ]);
-    return json({ apps: apps || [], searches: searches || [], screenTime: screen || [] }, 200, cors);
-  }
-  if (url.pathname === "/api/family/location" && request.method === "GET") {
-    const childId = url.searchParams.get("child");
-    if (!(await verifyChild(childId))) return json({ error: "You cannot view that location." }, 403, cors);
-    const restrictions = await db(env, "family_restrictions?select=location_tracking&family_id=eq." + encodeURIComponent(ctx.familyId) + "&child_account_id=eq." + encodeURIComponent(childId) + "&limit=1");
-    if (!restrictions || !restrictions[0] || restrictions[0].location_tracking !== true) return json({ error: "Location sharing is turned off for this family member." }, 403, cors);
-    const locations = await db(env, "child_locations?select=id,latitude,longitude,accuracy,recorded_at&account_id=eq." + encodeURIComponent(childId) + "&order=recorded_at.desc&limit=10");
-    return json({ locations: locations || [] }, 200, cors);
-  }
-  if (url.pathname === "/api/family/member/remove" && request.method === "POST") {
-    if (!isParent || !ctx.familyId) return json({ error: "Only parents can remove members." }, 403, cors);
-    const data = await readBody(), childId = data && data.accountId;
-    if (typeof childId !== "string" || childId === accountId || !(await verifyChild(childId))) return json({ error: "That child cannot be removed." }, 403, cors);
-    await db(env, "family_members?family_id=eq." + encodeURIComponent(ctx.familyId) + "&account_id=eq." + encodeURIComponent(childId), { method: "DELETE", headers: { "Prefer": "return=minimal" } });
-    return json({ ok: true }, 200, cors);
-  }
-  return json({ error: "Family endpoint not found." }, 404, cors);
-}
 async function api(request, env, url) {
   const requestOrigin = new URL(request.url).origin;
   const origin = request.headers.get("Origin") || (requestOrigin === "https://home.horizensearch.com" ? requestOrigin : "");
@@ -464,16 +310,6 @@ async function api(request, env, url) {
 
   const identity = await authenticate(request, env);
   if (!identity) return json({ error: "Session is missing, expired, or revoked. Sign in again." }, 401, cors);
-  if (url.pathname === "/api/family/auth/start" && request.method === "POST") {
-    if (!env.HOME_SIGNING_SECRET || env.HOME_SIGNING_SECRET.length < 32) return json({ error: "Family sign-in is not configured." }, 503, cors);
-    const state = randomToken(24), verifier = randomToken(32);
-    const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(verifier))));
-    const signed = await signedCookie({ flow: "family", state, verifier, expectedUserId: identity.userId, createdAt: Date.now() }, env.HOME_SIGNING_SECRET);
-    const authorize = new URL(MESSAGES_URL + "/auth/v1/oauth/authorize");
-    authorize.search = new URLSearchParams({ response_type: "code", client_id: OAUTH_CLIENT_ID, redirect_uri: OAUTH_REDIRECT, state, code_challenge: challenge, code_challenge_method: "S256", scope: "openid email profile" }).toString();
-    return json({ url: authorize.toString() }, 200, { ...cors, "Set-Cookie": cookieHeader(signed, 600, "hz_family_oauth", "/oauth/callback") });
-  }
-
   if (url.pathname === "/api/lock/context" && request.method === "POST") {
     let body; try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400, cors); }
     if (!identity.system.locked) return json({ locked: false }, 200, cors);
@@ -502,8 +338,6 @@ async function api(request, env, url) {
     return json({ locked: !!identity.system.locked, system: identity.system.system_name, origin: identity.system.system_origin, message: messages && messages[0] || null }, 200, cors);
   }
   if (identity.system.locked) return json({ error: "This system is locked.", locked: true, lockUrl: "https://secure.horizensearch.com/?system=" + encodeURIComponent(identity.system.system_origin) }, 423, cors);
-
-  if (url.pathname.startsWith("/api/family/")) return await familyApi(request, env, url, identity, cors);
 
   if (url.pathname === "/api/dashboard" && request.method === "GET") {
     const uid = encodeURIComponent(identity.userId);
@@ -645,56 +479,32 @@ function dashboardPage() {
   const page = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#070a09"><title>HorizenHome</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-:root{color-scheme:dark;--bg:#050914;--panel:#0d1730;--panel2:#122044;--line:#263c68;--muted:#9eafd0;--green:#63a8ff;--red:#ff718d}
+:root{color-scheme:dark;--bg:#050914;--panel:#0d1730;--panel2:#122044;--line:#263c68;--muted:#9eafd0;--blue:#69aaff;--blue2:#347dff;--red:#ff718d}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 12% -8%,#123a80 0,transparent 43%),radial-gradient(ellipse at 95% 10%,#14265a 0,transparent 42%),var(--bg);color:#edf4ff;font:15px Inter,system-ui,sans-serif;min-height:100vh}
 button{font:inherit;cursor:pointer}header{height:68px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 max(22px,calc((100vw - 1180px)/2));background:rgba(5,10,25,.88);position:sticky;top:0;z-index:3}
 .brand{font-size:22px;font-weight:800;color:#79b8ff;letter-spacing:-.7px}.brand span{color:#eaf4ee}.head-actions{display:flex;gap:10px;align-items:center}
 .btn{border:1px solid var(--line);background:#111f3d;color:#edf4ff;border-radius:9px;padding:10px 14px;font-weight:650}.btn.primary{background:linear-gradient(120deg,#62a8ff,#8b9dff);color:#071329;border-color:#72b1ff}.btn.danger{color:#ff9eaa;border-color:#63313a;background:#251317}.btn:disabled{opacity:.5;cursor:not-allowed}
-main{max-width:1180px;margin:0 auto;padding:34px 22px 70px}.welcome{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:26px}.eyebrow{color:var(--green);font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase}h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1.4px;margin:8px 0 6px}.sub{color:var(--muted);line-height:1.6;margin:0}.status{font-size:12px;color:#8fc3ff;border:1px solid #31558c;border-radius:99px;padding:8px 11px;white-space:nowrap}
-.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:15px}.card{background:linear-gradient(145deg,rgba(17,31,61,.97),rgba(8,15,33,.98));border:1px solid var(--line);border-radius:15px;padding:19px;min-width:0}.span-8{grid-column:span 8}.span-4{grid-column:span 4}.span-12{grid-column:span 12}.card h2{font-size:16px;margin:0 0 5px}.hint{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 15px}.metric{font-size:32px;font-weight:800;color:#82baff;margin:10px 0 0}.item{padding:13px 0;border-top:1px solid #203127;display:flex;justify-content:space-between;gap:14px;align-items:center}.item:first-child{border-top:0}.item-title{font-weight:700}.item-meta{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.pill{font-size:10px;border:1px solid #28553d;color:var(--green);padding:5px 8px;border-radius:99px;white-space:nowrap}.pill.off{color:#ffb4bd;border-color:#63313a}.empty{padding:16px;border:1px dashed #304638;border-radius:10px;color:var(--muted);font-size:13px;line-height:1.6}.event{display:grid;grid-template-columns:1fr auto;gap:10px;padding:11px 0;border-top:1px solid #203127}.event:first-child{border-top:0}.event strong{font-size:13px}.event small{display:block;color:var(--muted);margin-top:4px}.family{display:flex;justify-content:space-between;align-items:center;gap:16px}.notice{font-size:12px;color:#b5c5bb;background:#111e16;border:1px solid #294331;padding:12px;border-radius:10px;line-height:1.6}.login{max-width:480px;margin:12vh auto;padding:30px}.login h1{font-size:34px}.login p{color:var(--muted);line-height:1.7}.hidden{display:none!important}.error{color:#ff9eaa;font-size:13px;margin-top:12px;line-height:1.5}.foot{color:#6f8276;font-size:11px;margin-top:24px;line-height:1.6}
-.family-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 17px;border:1px solid var(--line);border-radius:12px;background:#0a142b;margin-bottom:12px}.family-toolbar>div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.family-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 18px}.family-tab{margin-top:12px}.family-tabs button{font-size:12px}.family-control-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.family-setting{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border:1px solid var(--line);border-radius:10px;background:#0a142b}.family-setting input[type=checkbox]{width:18px;height:18px;accent-color:#68adff}.family-setting input[type=number],#familySearchInput,#familyInviteRole,#familyControlChild,#familyActivityChild,#familyLocationChild,.family-field textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:9px;background:#071126;color:#edf4ff;font:inherit}.family-field{display:block;margin:12px 0;color:var(--muted);font-size:12px}.family-field textarea{display:block;margin-top:7px;resize:vertical}.family-map{height:360px;border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden;background:#071126}.family-result{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}.family-result:first-child{border-top:0}.family-activity{padding:10px 0;border-top:1px solid var(--line);font-size:13px}.family-activity small{display:block;color:var(--muted);margin-top:4px}
-@media(max-width:760px){header{padding:0 16px}.welcome{align-items:flex-start;flex-direction:column}.span-8,.span-4{grid-column:span 12}.family{align-items:flex-start;flex-direction:column}}
+main{max-width:1180px;margin:0 auto;padding:34px 22px 70px}.welcome{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:26px}.eyebrow{color:var(--blue);font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase}h1{font-size:clamp(28px,4vw,40px);letter-spacing:-1.4px;margin:8px 0 6px}.sub{color:var(--muted);line-height:1.6;margin:0}.status{font-size:12px;color:#8fc3ff;border:1px solid #31558c;border-radius:99px;padding:8px 11px;white-space:nowrap}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:15px}.card{background:linear-gradient(145deg,rgba(17,31,61,.97),rgba(8,15,33,.98));border:1px solid var(--line);border-radius:15px;padding:19px;min-width:0}.span-8{grid-column:span 8}.span-4{grid-column:span 4}.span-12{grid-column:span 12}.card h2{font-size:16px;margin:0 0 5px}.hint{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 15px}.metric{font-size:32px;font-weight:800;color:#82baff;margin:10px 0 0}.item{padding:13px 0;border-top:1px solid #203127;display:flex;justify-content:space-between;gap:14px;align-items:center}.item:first-child{border-top:0}.item-title{font-weight:700}.item-meta{font-size:12px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.pill{font-size:10px;border:1px solid #28553d;color:var(--green);padding:5px 8px;border-radius:99px;white-space:nowrap}.pill.off{color:#ffb4bd;border-color:#63313a}.empty{padding:16px;border:1px dashed #35527f;border-radius:10px;color:var(--muted);font-size:13px;line-height:1.6}.event{display:grid;grid-template-columns:1fr auto;gap:10px;padding:11px 0;border-top:1px solid #203127}.event:first-child{border-top:0}.event strong{font-size:13px}.event small{display:block;color:var(--muted);margin-top:4px}.notice{font-size:12px;color:#c6d9f7;background:linear-gradient(120deg,#0b1a35,#101f40);border:1px solid #294a7e;padding:12px;border-radius:10px;line-height:1.6}.login{max-width:480px;margin:12vh auto;padding:30px}.login h1{font-size:34px}.login p{color:var(--muted);line-height:1.7}.hidden{display:none!important}.error{color:#ff9eaa;font-size:13px;margin-top:12px;line-height:1.5}.foot{color:#8298bd;font-size:11px;margin-top:24px;line-height:1.6}
+@media(max-width:760px){header{padding:0 16px}.welcome{align-items:flex-start;flex-direction:column}.span-8,.span-4{grid-column:span 12}}
 
-body{background:radial-gradient(900px 500px at 5% -10%,rgba(48,117,255,.24),transparent 65%),radial-gradient(700px 460px at 100% 10%,rgba(85,102,255,.18),transparent 65%),#050914}header{backdrop-filter:blur(20px);background:rgba(5,10,25,.88);border-bottom-color:rgba(87,151,255,.24)}.brand{font-size:24px;text-shadow:0 0 24px rgba(70,145,255,.34)}.card{background:linear-gradient(145deg,rgba(17,31,61,.97),rgba(8,15,33,.98));border-color:rgba(105,155,235,.24);border-radius:19px;box-shadow:0 18px 55px rgba(0,0,0,.28);transition:border-color .2s,transform .2s}.card:hover{border-color:rgba(102,169,255,.52);transform:translateY(-1px)}.metric{font-size:38px;text-shadow:0 0 24px rgba(70,145,255,.24)}.welcome h1{font-size:clamp(34px,5vw,48px);background:linear-gradient(100deg,#f4f8ff,#91c7ff 65%,#a4aaff);-webkit-background-clip:text;background-clip:text;color:transparent}.event{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:13px;margin:8px 0;border:1px solid #263b68;border-radius:12px;background:#0a1227}.family-shortcuts{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.family-shortcuts .btn{font-size:11px;padding:8px 9px;text-align:center;text-decoration:none}.head-actions a.btn{display:inline-flex;align-items:center;text-decoration:none}
-.event-detail{margin-top:6px;padding:10px;border:1px solid #263b68;background:#060b19;border-radius:9px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;font-size:12px;line-height:1.55;color:#d1e0ff}
+body{background:radial-gradient(900px 520px at 4% -12%,rgba(35,112,255,.34),transparent 66%),radial-gradient(760px 520px at 100% 4%,rgba(64,89,210,.24),transparent 68%),radial-gradient(700px 520px at 48% 110%,rgba(12,55,125,.18),transparent 70%),#040817}header{backdrop-filter:blur(22px);background:rgba(4,9,24,.9);border-bottom-color:rgba(91,151,255,.28)}.brand{font-size:24px;text-shadow:0 0 28px rgba(70,145,255,.42)}.card{background:linear-gradient(145deg,rgba(15,31,62,.98),rgba(6,14,33,.99));border-color:rgba(105,155,235,.28);border-radius:19px;box-shadow:0 18px 55px rgba(0,0,0,.32),inset 0 1px rgba(255,255,255,.025);transition:border-color .2s,transform .2s,box-shadow .2s}.card:hover{border-color:rgba(102,169,255,.62);box-shadow:0 22px 60px rgba(0,0,0,.38),0 0 28px rgba(44,116,255,.08);transform:translateY(-2px)}.metric{font-size:38px;text-shadow:0 0 26px rgba(70,145,255,.3)}.btn{background:linear-gradient(145deg,#14284c,#0d1c38);border-color:#294a7b;transition:filter .18s,border-color .18s,transform .18s}.btn:hover{filter:brightness(1.18);border-color:#609eff}.btn.primary{background:linear-gradient(120deg,#4b9bff,#718dff);color:#06142d;border-color:#83b8ff;box-shadow:0 8px 24px rgba(55,126,255,.2)}.status{background:rgba(23,61,112,.24);border-color:#315c98}.event{border-color:#29416d;background:linear-gradient(120deg,#09152c,#0b1731)}.event-detail{border-color:#29416d;background:#050d1e}.welcome h1{font-size:clamp(34px,5vw,48px);background:linear-gradient(100deg,#f4f8ff,#91c7ff 65%,#a4aaff);-webkit-background-clip:text;background-clip:text;color:transparent}.event{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:13px;margin:8px 0;border:1px solid #263b68;border-radius:12px;background:#0a1227}.event-detail{margin-top:6px;padding:10px;border:1px solid #263b68;background:#060b19;border-radius:9px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;font-size:12px;line-height:1.55;color:#d1e0ff}
 </style></head><body>
-<header><div class="brand">Horizen<span>Home</span></div><div class="head-actions"><span id="accountLabel" class="item-meta"></span><span id="refreshStatus" class="item-meta">Live refresh · 2s</span><button id="refreshBtn" class="btn hidden" type="button" title="Refresh dashboard">↻ Refresh</button><button id="familyConnectionsBtn" class="btn hidden" type="button">👨‍👩‍👧 Family</button><button id="signOut" class="btn hidden">Sign out</button></div></header>
+<header><div class="brand">Horizen<span>Home</span></div><div class="head-actions"><span id="accountLabel" class="item-meta"></span><span id="refreshStatus" class="item-meta">Live refresh · 2s</span><button id="refreshBtn" class="btn hidden" type="button" title="Refresh dashboard">↻ Refresh</button><button id="signOut" class="btn hidden">Sign out</button></div></header>
 <main>
 <section id="loginPanel" class="card login"><div class="eyebrow">Your connected ecosystem</div><h1>One home for Horizen.</h1><p>Sign in securely with your existing HorizenMessages account to view your connected apps, sessions, and activity.</p><button id="loginBtn" class="btn primary">Continue with HorizenMessages</button><div id="loginError" class="error"></div><div class="foot">HorizenHome only receives information explicitly shared by connected apps. It does not scan your files or passwords.</div></section>
 <section id="dashboard" class="hidden">
-<div class="welcome" id="homeWelcome"><div><div class="eyebrow">Personal control center</div><h1 id="welcomeTitle">Your Horizen system</h1><p class="sub">Manage the apps and browser sessions connected to your account.</p></div><div class="status">● Home services online</div></div>
-<div class="grid" id="homeOverviewGrid">
+<div class="welcome"><div><div class="eyebrow">Personal control center</div><h1 id="welcomeTitle">Your Horizen system</h1><p class="sub">Manage the apps and browser sessions connected to your account.</p></div><div class="status">● Home services online</div></div>
+<div class="grid">
 <article class="card span-4"><h2>Connected systems</h2><p class="hint">Apps linked to this Messages account.</p><div class="metric" id="systemCount">0</div></article>
 <article class="card span-4"><h2>Active sessions</h2><p class="hint">Signed-in app/browser connections.</p><div class="metric" id="sessionCount">0</div></article>
 <article class="card span-4"><h2>Recent activity</h2><p class="hint">Metadata events shared by connected apps.</p><div class="metric" id="eventCount">0</div></article>
 <article class="card span-8"><h2>My systems</h2><p class="hint">Disable an app to revoke its current Home sessions. You can reconnect it later.</p><div id="systemsList" class="empty">Loading systems…</div></article>
 <article class="card span-4"><h2>Computer connections</h2><p class="hint">These are app/browser sessions, not a scan of your device.</p><div id="sessionsList" class="empty">Loading sessions…</div></article>
 <article class="card span-8"><h2>System logs</h2><p class="hint">Search activity by system name, event type, or logged details.</p><input id="eventSearch" type="search" placeholder="Search systems and logs…" autocomplete="off" style="width:100%;margin:0 0 12px;padding:12px 14px;border-radius:10px;border:1px solid #304b7b;background:#071126;color:#edf4ff;font:inherit;outline:none"><div id="eventsList" class="empty">No activity yet.</div></article>
-<article class="card span-4"><h2>HorizenFamily</h2><p class="hint">Manage family members, device controls, activity, and shared location inside HorizenHome.</p><button class="btn primary" type="button" onclick="document.getElementById('familyConnectionsBtn').click()">Open Family Control Center</button><div class="item-meta" style="margin-top:10px">Separate Messages sign-in · Existing Family accounts</div></article>
 <article class="card span-12"><h2>Privacy and security</h2><div class="notice">HorizenHome stores your Messages account ID, connected-app registrations, hashed session tokens, and limited activity metadata. It does not collect chat contents, prompts, images, passwords, files, or a device fingerprint. Revoke sessions you no longer recognize.</div></article>
-</div>
-<section id="familyModule" class="hidden">
-  <div class="welcome"><div><div class="eyebrow">HorizenFamily · Native Home module</div><h1>Family Control Center</h1><p class="sub">Family tools run inside HorizenHome and use your existing Family profile.</p></div><button class="btn" id="familyBackBtn" type="button">← Back to Home</button></div>
-  <div id="familyGate" class="card login"><h2>Connect HorizenFamily</h2><p class="hint">Sign in again with the same HorizenMessages account to open your family data and controls.</p><button id="familyAuthBtn" class="btn primary" type="button">Continue with HorizenMessages</button><div id="familyGateError" class="error"></div></div>
-  <div id="familyWorkspace" class="hidden">
-    <div class="family-toolbar"><div><strong id="familyTitle">My Family</strong><span id="familyRole" class="pill">Parent</span></div><div><button class="btn" id="familyRefreshBtn" type="button">↻ Refresh</button> <button class="btn danger" id="familySignOutBtn" type="button">Sign out of Family</button></div></div>
-    <div class="family-tabs"><button class="btn primary" data-family-tab="overview">Overview</button><button class="btn" data-family-tab="members">Members</button><button class="btn" data-family-tab="controls">Controls</button><button class="btn" data-family-tab="activity">Activity</button><button class="btn" data-family-tab="location">Location</button></div>
-    <div id="familyError" class="error"></div>
-    <div id="familyTab-overview" class="family-tab"><div class="grid">
-      <article class="card span-4"><h2>Family members</h2><div class="metric" id="familyMemberCount">0</div></article><article class="card span-4"><h2>Children</h2><div class="metric" id="familyChildCount">0</div></article><article class="card span-4"><h2>Pending invitations</h2><div class="metric" id="familyInviteCount">0</div></article>
-      <article class="card span-8"><h2>People in your family</h2><div id="familyOverviewMembers" class="empty">Loading…</div></article><article class="card span-4"><h2>Invitations</h2><div id="familyOverviewInvites" class="empty">No invitations.</div></article>
-    </div><div id="familyCreateBox" class="card hidden"><h2>Create your family</h2><p class="hint">Your Messages account is connected, but it is not part of a family yet.</p><button class="btn primary" id="familyCreateBtn" type="button">Create Family</button></div></div>
-    <div id="familyTab-members" class="family-tab hidden"><div class="grid"><article class="card span-8"><h2>Family members</h2><div id="familyMembersList" class="empty">Loading…</div></article><article class="card span-4" id="familyInviteCard"><h2>Invite a member</h2><p class="hint">Search by HorizenFamily username.</p><input id="familySearchInput" placeholder="Search username" autocomplete="off"><select id="familyInviteRole"><option value="child">Child</option><option value="parent">Parent</option></select><button class="btn primary" id="familySearchBtn" type="button">Search</button><div id="familySearchResults"></div></article></div></div>
-    <div id="familyTab-controls" class="family-tab hidden"><article class="card"><h2>Parental controls</h2><p class="hint" id="familyControlsHint">Select a child to manage their settings.</p><select id="familyControlChild"></select><div id="familyControlsEditor" class="hidden"><div class="family-control-grid">
-      <label class="family-setting"><span>Safe Search</span><input type="checkbox" id="familySafeSearch"></label><label class="family-setting"><span>Device locked</span><input type="checkbox" id="familyLocked"></label><label class="family-setting"><span>Location sharing</span><input type="checkbox" id="familyLocationTracking"></label><label class="family-setting"><span>Daily screen-time limit (minutes)</span><input type="number" id="familyScreenLimit" min="0" max="1440" step="5"></label></div>
-      <label class="family-field">Blocked websites (one domain per line)<textarea id="familyBlockedUrls" rows="5" placeholder="example.com"></textarea></label><button class="btn primary" id="familySaveControls" type="button">Save Family Controls</button></div><div id="familyChildReadOnly" class="notice hidden">You are signed in as a child. These settings are read-only.</div></article></div>
-    <div id="familyTab-activity" class="family-tab hidden"><article class="card"><h2>Family activity · Last 7 days</h2><p class="hint">Activity is only available to parents for children in their family.</p><select id="familyActivityChild"></select><div id="familyActivityContent" class="empty">Select a child to view activity.</div></article></div>
-    <div id="familyTab-location" class="family-tab hidden"><article class="card"><h2>Family location</h2><p class="hint">Location is shown only when the family member has enabled location sharing.</p><select id="familyLocationChild"></select><div id="familyLocationMap" class="family-map"></div><div id="familyLocationInfo" class="item-meta">Choose a family member.</div><div id="familyLocationHistory"></div></article></div>
-  </div>
-</section>
-<div id="dashError" class="error"></div><div class="foot">HorizenHome · Sessions expire after seven days. Signing out revokes this dashboard session.</div>
+</div><div id="dashError" class="error"></div><div class="foot">HorizenHome · Sessions expire after seven days. Signing out revokes this dashboard session.</div>
 </section></main>
 <script>
 (function(){
@@ -703,8 +513,8 @@ var KEY="hz_home_dashboard_token_v1",token=localStorage.getItem(KEY)||"";
 var $=function(id){return document.getElementById(id)};
 function esc(v){return String(v==null?"":v).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function date(v){try{return new Date(v).toLocaleString()}catch(e){return "Unknown"}}
-function showLogin(message){$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");$("signOut").classList.add("hidden");$("familyConnectionsBtn").classList.add("hidden");$("loginError").textContent=message||""}
-function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("signOut").classList.remove("hidden");$("familyConnectionsBtn").classList.remove("hidden"); }
+function showLogin(message){$("loginPanel").classList.remove("hidden");$("dashboard").classList.add("hidden");$("signOut").classList.add("hidden");$("loginError").textContent=message||""}
+function showDashboard(){ $("loginPanel").classList.add("hidden");$("dashboard").classList.remove("hidden");$("signOut").classList.remove("hidden"); }
 function login(){location.href="/connect?system=HorizenHome&return="+encodeURIComponent(location.origin+"/")}
 async function api(path,opts){var r=await fetch(path,Object.assign({},opts||{},{headers:Object.assign({"Authorization":"Bearer "+token,"Content-Type":"application/json"},(opts&&opts.headers)||{})}));var d=await r.json().catch(function(){return {}});if(!r.ok)throw new Error(d.error||"Request failed ("+r.status+")");return d}
 var loading=false;
@@ -724,33 +534,6 @@ async function load(silent){
  }catch(e){if(/Session is missing|expired|revoked/i.test(e.message)){localStorage.removeItem(KEY);token="";showLogin("Your session expired. Please sign in again.");}else{$("dashError").textContent=e.message;if(!silent)showDashboard();}}
  finally{loading=false;if(refresh)refresh.disabled=false;}
 }
-var familyData=null,familyMap=null,familyMarker=null;
-function showHomeOverview(){$("homeOverviewGrid").classList.remove("hidden");$("homeWelcome").classList.remove("hidden");$("familyModule").classList.add("hidden")}
-function showFamilyModule(){$("homeOverviewGrid").classList.add("hidden");$("homeWelcome").classList.add("hidden");$("familyModule").classList.remove("hidden");loadFamily()}
-function familyTab(name){document.querySelectorAll(".family-tab").forEach(function(x){x.classList.add("hidden")});var p=$("familyTab-"+name);if(p)p.classList.remove("hidden");document.querySelectorAll("[data-family-tab]").forEach(function(b){b.classList.toggle("primary",b.dataset.familyTab===name)});if(name==="location"&&familyMap)setTimeout(function(){familyMap.invalidateSize()},100)}
-async function loadFamily(){ $("familyError").textContent="";$("familyGateError").textContent="";try{familyData=await api("/api/family/dashboard");$("familyGate").classList.add("hidden");$("familyWorkspace").classList.remove("hidden");renderFamily()}catch(e){$("familyWorkspace").classList.add("hidden");$("familyGate").classList.remove("hidden");$("familyGateError").textContent=/Sign in to HorizenFamily/i.test(e.message)?"Connect your Family profile with HorizenMessages to continue.":e.message}}
-function renderFamily(){
- var d=familyData,role=d.role||"parent",members=d.members||[],children=members.filter(function(m){return m.role==="child"}),invites=d.invites||[];
- $("familyTitle").textContent=d.family&&d.family.family_name||"My Family";$("familyRole").textContent=role==="parent"?"Parent":"Child";
- $("familyMemberCount").textContent=members.length;$("familyChildCount").textContent=children.length;$("familyInviteCount").textContent=invites.filter(function(i){return i.status==="pending"}).length;
- $("familyCreateBox").classList.toggle("hidden",!!d.family||role!=="parent");$("familyInviteCard").classList.toggle("hidden",role!=="parent");
- $("familyOverviewMembers").innerHTML=members.length?members.map(function(m){var a=m.account||{};return '<div class="family-result"><div><strong>'+esc(a.display_name||a.username||"Family member")+'</strong><div class="item-meta">@'+esc(a.username||"unknown")+' · '+esc(m.role)+'</div></div><span class="pill">'+esc(m.role)+'</span></div>'}).join(""):'<div class="empty">No family members yet.</div>';
- $("familyMembersList").innerHTML=members.length?members.map(function(m){var a=m.account||{};return '<div class="family-result"><div><strong>'+esc(a.display_name||a.username||"Family member")+'</strong><div class="item-meta">@'+esc(a.username||"unknown")+' · '+esc(m.role)+'</div></div>'+(role==="parent"&&m.role==="child"?'<button class="btn danger" data-family-remove="'+esc(m.account_id)+'">Remove</button>':'<span class="pill">'+esc(m.role)+'</span>')+'</div>'}).join(""):'<div class="empty">No members yet.</div>';
- var pending=invites.filter(function(i){return i.status==="pending"});$("familyOverviewInvites").innerHTML=pending.length?pending.map(function(i){return '<div class="family-result"><div><strong>'+esc(i.from_account&&(i.from_account.display_name||i.from_account.username)||"Family member")+'</strong><div class="item-meta">Invited you as '+esc(i.role||"child")+'</div></div><div><button class="btn primary" data-family-respond="'+esc(i.id)+'" data-status="accepted">Accept</button> <button class="btn danger" data-family-respond="'+esc(i.id)+'" data-status="declined">Decline</button></div></div>'}).join(""):'<div class="empty">No pending invitations.</div>';
- var options=children.map(function(m){var a=m.account||{};return '<option value="'+esc(m.account_id)+'">'+esc(a.display_name||a.username||"Child")+'</option>'}).join("");
- ["familyControlChild","familyActivityChild","familyLocationChild"].forEach(function(id){var el=$(id),old=el.value;el.innerHTML=options||'<option value="">No children</option>';if(old&&children.some(function(m){return m.account_id===old}))el.value=old});
- $("familyChildReadOnly").classList.toggle("hidden",role!=="child");$("familyControlsEditor").classList.toggle("hidden",role!=="parent"||!children.length);
- $("familyControlsHint").textContent=role==="parent"?"Choose a child and configure their family restrictions.":"Your family restrictions are read-only.";
- document.querySelector('[data-family-tab="activity"]').classList.toggle("hidden",role!=="parent");document.querySelector('[data-family-tab="location"]').classList.toggle("hidden",role!=="parent");
- if(role==="parent"&&children.length)loadFamilyControls();if(role==="child"){var own=(d.restrictions||[])[0]||{};$("familyChildReadOnly").textContent="Your restrictions: Safe Search "+(own.safe_search?"ON":"OFF")+", screen-time limit "+(own.screen_time_limit_minutes||0)+" minutes, device "+(own.locked?"locked":"unlocked")+".";
- }
-}
-function loadFamilyControls(){var id=$("familyControlChild").value;if(!id)return;var r=(familyData.restrictions||[]).find(function(x){return x.child_account_id===id})||{};$("familySafeSearch").checked=!!r.safe_search;$("familyLocked").checked=!!r.locked;$("familyLocationTracking").checked=!!r.location_tracking;$("familyScreenLimit").value=r.screen_time_limit_minutes==null?120:r.screen_time_limit_minutes;$("familyBlockedUrls").value=Array.isArray(r.blocked_urls)?r.blocked_urls.join("\n"):"";$("familyControlsEditor").classList.remove("hidden")}
-async function familySearch(){var q=$("familySearchInput").value.trim();if(q.length<2){$("familySearchResults").textContent="Enter at least 2 characters.";return}$("familySearchResults").textContent="Searching…";try{var d=await api("/api/family/invite/search",{method:"POST",body:JSON.stringify({query:q})});$("familySearchResults").innerHTML=d.users.length?d.users.map(function(u){var state=u.is_member?"Already a member":u.invited?"Invitation pending":'<button class="btn primary" data-family-invite="'+esc(u.id)+'">Invite</button>';return '<div class="family-result"><div><strong>'+esc(u.display_name||u.username)+'</strong><div class="item-meta">@'+esc(u.username)+'</div></div>'+state+'</div>'}).join(""):'<div class="empty">No users found.</div>'}catch(e){$("familySearchResults").textContent=e.message}}
-async function loadFamilyActivity(){var id=$("familyActivityChild").value;if(!id)return;$("familyActivityContent").textContent="Loading activity…";try{var d=await api("/api/family/activity?child="+encodeURIComponent(id)),rows=[];(d.screenTime||[]).forEach(function(x){rows.push('<div class="family-activity"><strong>Screen time · '+esc(x.minutes_used||0)+' minutes</strong><small>'+esc(x.date)+'</small></div>')});(d.apps||[]).forEach(function(x){rows.push('<div class="family-activity"><strong>Opened '+esc(x.app_name||"an app")+'</strong><small>'+esc(x.app_url||"")+' · '+esc(date(x.opened_at))+'</small></div>')});(d.searches||[]).forEach(function(x){rows.push('<div class="family-activity"><strong>Search</strong><div>'+esc(x.query)+'</div><small>'+esc(date(x.searched_at))+'</small></div>')});$("familyActivityContent").innerHTML=rows.length?rows.join(""):'<div class="empty">No activity recorded in the last 7 days.</div>'}catch(e){$("familyActivityContent").textContent=e.message}}
-function initFamilyMap(){if(familyMap||!window.L)return;familyMap=L.map("familyLocationMap",{zoomControl:true}).setView([0,0],2);L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap contributors",maxZoom:19,minZoom:2,crossOrigin:true}).addTo(familyMap);familyMarker=L.marker([0,0]).addTo(familyMap);familyMarker.setOpacity(0)}
-async function loadFamilyLocation(){var id=$("familyLocationChild").value;if(!id)return;$("familyLocationInfo").textContent="Loading location…";try{var d=await api("/api/family/location?child="+encodeURIComponent(id)),locs=d.locations||[],latest=locs[0];initFamilyMap();if(familyMap)setTimeout(function(){familyMap.invalidateSize()},100);if(latest&&Number.isFinite(Number(latest.latitude))&&Number.isFinite(Number(latest.longitude))){var point=[Number(latest.latitude),Number(latest.longitude)];familyMap.setView(point,15);familyMarker.setLatLng(point);familyMarker.setOpacity(1);$("familyLocationInfo").textContent=point[0].toFixed(5)+", "+point[1].toFixed(5)+" · "+(latest.accuracy?"±"+Math.round(latest.accuracy)+"m":"accuracy unknown")+" · "+date(latest.recorded_at)}else{$("familyLocationInfo").textContent="No location has been shared.";familyMarker.setOpacity(0)}$("familyLocationHistory").innerHTML=locs.slice(1).map(function(x){return '<div class="family-activity">'+Number(x.latitude).toFixed(4)+", "+Number(x.longitude).toFixed(4)+'<small>'+esc(date(x.recorded_at))+'</small></div>'}).join("")}catch(e){$("familyLocationInfo").textContent=e.message;initFamilyMap();if(familyMarker)familyMarker.setOpacity(0)}}
-async function saveFamilyControls(){var id=$("familyControlChild").value;if(!id)return;var data={childAccountId:id,safe_search:$("familySafeSearch").checked,locked:$("familyLocked").checked,location_tracking:$("familyLocationTracking").checked,screen_time_limit_minutes:Number($("familyScreenLimit").value),blocked_urls:$("familyBlockedUrls").value.split("\n").map(function(x){return x.trim()}).filter(Boolean)};try{await api("/api/family/restriction",{method:"POST",body:JSON.stringify(data)});$("familyError").textContent="Family controls saved.";await loadFamily()}catch(e){$("familyError").textContent=e.message}}
 function renderEvents(){var input=$("eventSearch"),q=(input?input.value:"").trim().toLowerCase();var rows=(window.homeEvents||[]).filter(function(e){var app=e.home_systems&&e.home_systems.system_name||"App";return (app+" "+e.event_type+" "+JSON.stringify(e.event_data||{})).toLowerCase().indexOf(q)!==-1;});$("eventsList").className="";$("eventsList").innerHTML=rows.length?rows.map(function(e){var app=e.home_systems&&e.home_systems.system_name||"App",v=e.event_data||{};return '<div class="event"><div><strong>'+esc(e.event_type.replace(/_/g," "))+'</strong><small>'+esc(app)+'</small>'+(v.query?'<div class="item-meta">Exact prompt / search</div><div class="event-detail">'+esc(v.query)+'</div>':'')+(v.response?'<div class="item-meta">HorizenAI response</div><div class="event-detail">'+esc(v.response)+'</div>':'')+'</div><small>'+esc(date(e.created_at))+'</small></div>'}).join(""):'<div class="empty">'+(q?'No logs match your search.':'No activity has been shared yet.')+'</div>';}
 document.addEventListener("click",async function(e){
  var b=e.target.closest("button[data-session],button[data-system],button[data-password],button[data-lock]");
@@ -758,25 +541,12 @@ document.addEventListener("click",async function(e){
  var cb=e.target.closest("input[data-logging]");if(cb){try{await api("/api/systems/logging",{method:"POST",body:JSON.stringify({id:cb.dataset.logging,enabled:cb.checked})});await load();}catch(err){$("dashError").textContent=err.message;}}
 });
 $("eventSearch").addEventListener("input",renderEvents);
-$("familyConnectionsBtn").addEventListener("click",showFamilyModule);$("familyBackBtn").addEventListener("click",showHomeOverview);
-$("familyAuthBtn").addEventListener("click",async function(){try{$("familyAuthBtn").disabled=true;$("familyGateError").textContent="Opening HorizenMessages…";var d=await api("/api/family/auth/start",{method:"POST"});location.assign(d.url)}catch(e){$("familyGateError").textContent=e.message;$("familyAuthBtn").disabled=false}});
-$("familyRefreshBtn").addEventListener("click",loadFamily);$("familySignOutBtn").addEventListener("click",async function(){try{await api("/api/family/logout",{method:"POST"})}catch(e){}familyData=null;$("familyWorkspace").classList.add("hidden");$("familyGate").classList.remove("hidden");$("familyGateError").textContent="You have signed out of Family."});
-$("familyCreateBtn").addEventListener("click",async function(){try{await api("/api/family/create",{method:"POST"});await loadFamily()}catch(e){$("familyError").textContent=e.message}});
-$("familySearchBtn").addEventListener("click",familySearch);$("familySaveControls").addEventListener("click",saveFamilyControls);$("familyControlChild").addEventListener("change",loadFamilyControls);$("familyActivityChild").addEventListener("change",loadFamilyActivity);$("familyLocationChild").addEventListener("change",loadFamilyLocation);
-document.querySelectorAll("[data-family-tab]").forEach(function(b){b.addEventListener("click",function(){familyTab(b.dataset.familyTab);if(b.dataset.familyTab==="activity")loadFamilyActivity();if(b.dataset.familyTab==="location")loadFamilyLocation()})});
-document.addEventListener("click",async function(e){
- var inv=e.target.closest("[data-family-invite]");if(inv){try{inv.disabled=true;await api("/api/family/invite",{method:"POST",body:JSON.stringify({accountId:inv.dataset.familyInvite,role:$("familyInviteRole").value})});inv.textContent="Invited ✓";await loadFamily()}catch(err){$("familyError").textContent=err.message;inv.disabled=false}return}
- var rsp=e.target.closest("[data-family-respond]");if(rsp){try{await api("/api/family/invite/respond",{method:"POST",body:JSON.stringify({id:rsp.dataset.familyRespond,status:rsp.dataset.status})});await loadFamily()}catch(err){$("familyError").textContent=err.message}return}
- var rem=e.target.closest("[data-family-remove]");if(rem){if(!confirm("Remove this child from your family?"))return;try{await api("/api/family/member/remove",{method:"POST",body:JSON.stringify({accountId:rem.dataset.familyRemove})});await loadFamily()}catch(err){$("familyError").textContent=err.message}return}
-});
-
 $("loginBtn").addEventListener("click",login);
 $("refreshBtn").addEventListener("click",function(){load(false);});
 $("signOut").addEventListener("click",async function(){try{await api("/api/logout",{method:"POST"})}catch(e){}localStorage.removeItem(KEY);token="";showLogin("You have signed out.");});
 var params=new URLSearchParams(location.search),hash=new URLSearchParams(location.hash.replace(/^#/,""));
-var familyParams=new URLSearchParams(location.search);
 var incoming=hash.get("hz_home_token");if(incoming){token=incoming;localStorage.setItem(KEY,token);history.replaceState(null,"",location.pathname);}
-if(params.has("home_error"))showLogin("Messages sign-in did not complete. Please try again.");else if(token){showDashboard();$("refreshBtn").classList.remove("hidden");load(false);setInterval(function(){if(!document.hidden&&token)load(true);},2000);if(familyParams.has("family_auth")||familyParams.has("family_error"))showFamilyModule();}else showLogin("");
+if(params.has("home_error"))showLogin("Messages sign-in did not complete. Please try again.");else if(token){showDashboard();$("refreshBtn").classList.remove("hidden");load(false);setInterval(function(){if(!document.hidden&&token)load(true);},2000);}else showLogin("");
 })();
 </script></body></html>`;
   return html(page,200,{"X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","X-Frame-Options":"DENY","Permissions-Policy":"camera=(), microphone=(), geolocation=()"});
