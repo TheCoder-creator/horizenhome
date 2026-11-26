@@ -96,3 +96,22 @@ revoke all on public.home_system_lock_messages from anon, authenticated;
 revoke all on public.home_system_lock_attempts from anon, authenticated;
 grant all on public.home_system_lock_messages to service_role;
 grant all on public.home_system_lock_attempts to service_role;
+
+create table if not exists public.home_system_lock_contexts (
+  id uuid primary key default gen_random_uuid(),
+  system_id uuid not null,
+  messages_user_id text not null,
+  ticket_hash text not null unique,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now(),
+  constraint home_system_lock_contexts_system_owner_fk
+    foreign key (system_id, messages_user_id)
+    references public.home_systems (id, owner_messages_user_id)
+    on delete cascade
+);
+create index if not exists home_system_lock_contexts_expiry_idx
+  on public.home_system_lock_contexts (expires_at);
+alter table public.home_system_lock_contexts enable row level security;
+revoke all on public.home_system_lock_contexts from anon, authenticated;
+grant all on public.home_system_lock_contexts to service_role;
