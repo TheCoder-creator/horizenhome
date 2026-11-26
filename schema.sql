@@ -102,7 +102,7 @@ create table if not exists public.home_system_lock_contexts (
   system_id uuid not null,
   messages_user_id text not null,
   ticket_hash text not null unique,
-  expires_at timestamptz not null,
+  expires_at timestamptz,
   consumed_at timestamptz,
   created_at timestamptz not null default now(),
   constraint home_system_lock_contexts_system_owner_fk
