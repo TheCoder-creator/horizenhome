@@ -5,7 +5,7 @@ function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function page(system, error = "", returnUrl = "") {
+function page(system, error = "", returnUrl = "", ticket = "") {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -38,7 +38,7 @@ button{width:100%;margin-top:15px;padding:15px;border:0;border-radius:12px;backg
 <p><strong>${escapeHtml(system)}</strong> is protected by a password. Enter its lock password to continue.</p>
 ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
 <form method="post" action="/unlock">
-<input type="hidden" name="system" value="${escapeHtml(system)}">
+<input type="hidden" name="ticket" value="${escapeHtml(ticket)}">
 <input type="hidden" name="return" value="${escapeHtml(returnUrl)}">
 <label for="password">System password</label>
 <input id="password" name="password" type="password" minlength="1" maxlength="128" autocomplete="current-password" required autofocus>
@@ -85,33 +85,33 @@ export default {
     }
 
     if (request.method === "GET" && url.pathname === "/") {
-      const systemOrigin = url.searchParams.get("system") || "";
-      const { response, data } = await homeRequest("/api/lock/service/inspect?origin=" + encodeURIComponent(systemOrigin), env.LOCK_SERVICE_SECRET);
+      const ticket = url.searchParams.get("ticket") || "";
+      const { response, data } = await homeRequest("/api/lock/service/inspect?ticket=" + encodeURIComponent(ticket), env.LOCK_SERVICE_SECRET);
       if (response.status === 404) return new Response("This Horizen system is not registered with HorizenHome.", { status: 404, headers: headers() });
       if (!response.ok || !data.found) return new Response("Could not verify this system. Please try again later.", { status: 502, headers: headers() });
       const returnTo = safeReturn(url.searchParams.get("return"), data.origin);
       if (!data.locked) return Response.redirect(returnTo, 302);
-      return new Response(page(data.system, "", returnTo), { status: 200, headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" } });
+      return new Response(page(data.system, "", returnTo, ticket), { status: 200, headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" } });
     }
 
     if (request.method === "POST" && url.pathname === "/unlock") {
       const form = await request.formData();
-      const systemOrigin = String(form.get("system") || "");
+      const ticket = String(form.get("ticket") || "");
       const password = String(form.get("password") || "");
       const returnRaw = String(form.get("return") || "");
       const { response, data } = await homeRequest("/api/lock/service/verify", env.LOCK_SERVICE_SECRET, {
         method: "POST",
-        body: JSON.stringify({ origin: systemOrigin, password, clientIp: request.headers.get("CF-Connecting-IP") || "unknown" })
+        body: JSON.stringify({ ticket, password, clientIp: request.headers.get("CF-Connecting-IP") || "unknown" })
       });
       if (response.ok && data.ok && data.redirect) {
         return Response.redirect(safeReturn(returnRaw, data.redirect), 303);
       }
-      const inspected = await homeRequest("/api/lock/service/inspect?origin=" + encodeURIComponent(systemOrigin), env.LOCK_SERVICE_SECRET);
+      const inspected = await homeRequest("/api/lock/service/inspect?ticket=" + encodeURIComponent(ticket), env.LOCK_SERVICE_SECRET);
       if (inspected.response.ok && inspected.data.found && !inspected.data.locked) {
         return Response.redirect(safeReturn(returnRaw, inspected.data.origin), 303);
       }
       const message = data.error || "Unable to unlock this system. Try again.";
-      return new Response(page(inspected.data.system || "Horizen system", message, safeReturn(returnRaw, inspected.data.origin || systemOrigin)), {
+      return new Response(page(inspected.data.system || "Horizen system", message, safeReturn(returnRaw, inspected.data.origin || "https://home.horizensearch.com"), ticket), {
         status: response.status === 429 ? 429 : 200,
         headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" }
       });
