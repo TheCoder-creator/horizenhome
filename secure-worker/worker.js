@@ -5,7 +5,7 @@ function escapeHtml(value) {
   return String(value || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
-function page(system, error = "") {
+function page(system, error = "", returnUrl = "") {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -39,7 +39,7 @@ button{width:100%;margin-top:15px;padding:15px;border:0;border-radius:12px;backg
 ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
 <form method="post" action="/unlock">
 <input type="hidden" name="system" value="${escapeHtml(system)}">
-<input type="hidden" name="return" value="${escapeHtml(arguments[1] && arguments[1].returnUrl || "")}">
+<input type="hidden" name="return" value="${escapeHtml(returnUrl)}">
 <label for="password">System password</label>
 <input id="password" name="password" type="password" minlength="1" maxlength="128" autocomplete="current-password" required autofocus>
 <button type="submit">Unlock system <span aria-hidden="true">→</span></button>
@@ -91,7 +91,7 @@ export default {
       if (!response.ok || !data.found) return new Response("Could not verify this system. Please try again later.", { status: 502, headers: headers() });
       const returnTo = safeReturn(url.searchParams.get("return"), data.origin);
       if (!data.locked) return Response.redirect(returnTo, 302);
-      return new Response(page(data.system, { returnUrl: returnTo }), { status: 200, headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" } });
+      return new Response(page(data.system, "", returnTo), { status: 200, headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" } });
     }
 
     if (request.method === "POST" && url.pathname === "/unlock") {
@@ -111,12 +111,9 @@ export default {
         return Response.redirect(safeReturn(returnRaw, inspected.data.origin), 303);
       }
       const message = data.error || "Unable to unlock this system. Try again.";
-      return new Response(page(inspected.data.system || "Horizen system", { returnUrl: safeReturn(returnRaw, inspected.data.origin || systemOrigin) }).replace("</div>\n</main>", "</div>\n</main>"), {
+      return new Response(page(inspected.data.system || "Horizen system", message, safeReturn(returnRaw, inspected.data.origin || systemOrigin)), {
         status: response.status === 429 ? 429 : 200,
         headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" }
-      }).then(async res => {
-        const body = await res.text();
-        return new Response(body.replace('<div class="eyebrow">', '<div class="error">' + escapeHtml(message) + '</div><div class="eyebrow">'), { status: res.status, headers: res.headers });
       });
     }
 
