@@ -6,7 +6,7 @@ const SYSTEMS = Object.freeze({ HorizenHome: "https://home.horizensearch.com", H
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 const COOKIE_NAME = "hz_home_oauth";
 const encoder = new TextEncoder();
-const sdk = "(function () {\n  \"use strict\";\n  const HOME = \"https://home.horizensearch.com\";\n  const STORAGE_KEY = \"hz_home_session_v1\";\n  let token = \"\";\n  let connected = false;\n  function button() { return document.getElementById(\"homeAccountBtn\"); }\n  function setButton(text, title) {\n    const el = button();\n    if (el) {\n      el.innerHTML = '<i class=\"fas fa-house\"></i> ' + text;\n      el.title = title || text;\n      el.classList.toggle(\"active\", connected);\n    }\n  }\n  async function request(path, options) {\n    return fetch(HOME + path, {\n      ...options,\n      headers: { ...(options && options.headers || {}), \"Authorization\": \"Bearer \" + token }\n    });\n  }\n  function connect() {\n    const back = location.origin + location.pathname + location.search;\n    location.assign(HOME + \"/connect?system=HorizenAI&return=\" + encodeURIComponent(back));\n  }\n  async function me() {\n    if (!token) return null;\n    const response = await request(\"/api/me\", { method: \"GET\" });\n    if (response.status === 423) {\n      location.assign(\"https://secure.horizensearch.com/?system=\" + encodeURIComponent(location.origin) + \"&return=\" + encodeURIComponent(location.href));\n      return null;\n    }\n    if (!response.ok) {\n      token = \"\";\n      connected = false;\n      localStorage.removeItem(STORAGE_KEY);\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n      return null;\n    }\n    connected = true;\n    const data = await response.json();\n    setButton(\"Home ✓\", \"Connected to HorizenHome. Click to disconnect.\");\n    return data;\n  }\n  async function track(type, data) {\n    if (!token || !connected) return;\n    try {\n      await request(\"/api/events\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ type, data: data || {} })\n      });\n    } catch (_) {}\n  }\n  async function pollLock() {\n    if (!token || !connected) return;\n    try {\n      const response = await request(\"/api/lock/poll\", { method: \"GET\" });\n      if (!response.ok) return;\n      const status = await response.json();\n      if (status.locked) location.assign(\"https://secure.horizensearch.com/?system=\" + encodeURIComponent(location.origin) + \"&return=\" + encodeURIComponent(location.href));\n    } catch (_) {}\n  }\n  async function logout() {\n    if (token) {\n      try { await request(\"/api/logout\", { method: \"POST\" }); } catch (_) {}\n    }\n    localStorage.removeItem(STORAGE_KEY);\n    token = \"\";\n    connected = false;\n    setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n  }\n  async function init() {\n    const hash = new URLSearchParams(location.hash.replace(/^#/, \"\"));\n    const incoming = hash.get(\"hz_home_token\");\n    if (incoming) {\n      token = incoming;\n      localStorage.setItem(STORAGE_KEY, token);\n      history.replaceState(null, \"\", location.pathname + location.search);\n    } else {\n      token = localStorage.getItem(STORAGE_KEY) || \"\";\n    }\n    const el = button();\n    if (el) {\n      el.addEventListener(\"click\", async function () {\n        if (!connected) return connect();\n        if (confirm(\"Disconnect this browser from HorizenHome?\")) await logout();\n      });\n    }\n    if (token) {\n      const profile = await me();\n      if (profile) {\n        await track(\"app_opened\", { path: location.pathname });\n        setInterval(pollLock, 8000);\n      }\n    } else {\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n    }\n  }\n  window.HorizenHome = { init, connect, me, track, logout, isConnected: () => connected };\n  if (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", init, { once: true });\n  else init();\n})();";
+const sdk = "(function () {\n  \"use strict\";\n  const HOME = \"https://home.horizensearch.com\";\n  const STORAGE_KEY = \"hz_home_session_v1\";\n  let token = \"\";\n  let connected = false;\n  function button() { return document.getElementById(\"homeAccountBtn\"); }\n  function setButton(text, title) {\n    const el = button();\n    if (el) {\n      el.innerHTML = '<i class=\"fas fa-house\"></i> ' + text;\n      el.title = title || text;\n      el.classList.toggle(\"active\", connected);\n    }\n  }\n  async function request(path, options) {\n    return fetch(HOME + path, {\n      ...options,\n      headers: { ...(options && options.headers || {}), \"Authorization\": \"Bearer \" + token }\n    });\n  }\n  function connect() {\n    const back = location.origin + location.pathname + location.search;\n    location.assign(HOME + \"/connect?system=HorizenAI&return=\" + encodeURIComponent(back));\n  }\n  async function secureRedirect() {\n    try {\n      const response = await request(\"/api/lock/context\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ returnUrl: location.href })\n      });\n      if (!response.ok) return;\n      const data = await response.json();\n      if (data.url) location.assign(data.url);\n    } catch (_) {}\n  }\n  async function me() {\n    if (!token) return null;\n    const response = await request(\"/api/me\", { method: \"GET\" });\n    if (response.status === 423) {\n      await secureRedirect();\n      return null;\n    }\n    if (!response.ok) {\n      token = \"\";\n      connected = false;\n      localStorage.removeItem(STORAGE_KEY);\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n      return null;\n    }\n    connected = true;\n    const data = await response.json();\n    setButton(\"Home ✓\", \"Connected to HorizenHome. Click to disconnect.\");\n    return data;\n  }\n  async function track(type, data) {\n    if (!token || !connected) return;\n    try {\n      await request(\"/api/events\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\" },\n        body: JSON.stringify({ type, data: data || {} })\n      });\n    } catch (_) {}\n  }\n  async function pollLock() {\n    if (!token || !connected) return;\n    try {\n      const response = await request(\"/api/lock/poll\", { method: \"GET\" });\n      if (!response.ok) return;\n      const status = await response.json();\n      if (status.locked) await secureRedirect();\n    } catch (_) {}\n  }\n  async function logout() {\n    if (token) {\n      try { await request(\"/api/logout\", { method: \"POST\" }); } catch (_) {}\n    }\n    localStorage.removeItem(STORAGE_KEY);\n    token = \"\";\n    connected = false;\n    setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n  }\n  async function init() {\n    const hash = new URLSearchParams(location.hash.replace(/^#/, \"\"));\n    const incoming = hash.get(\"hz_home_token\");\n    if (incoming) {\n      token = incoming;\n      localStorage.setItem(STORAGE_KEY, token);\n      history.replaceState(null, \"\", location.pathname + location.search);\n    } else {\n      token = localStorage.getItem(STORAGE_KEY) || \"\";\n    }\n    const el = button();\n    if (el) {\n      el.addEventListener(\"click\", async function () {\n        if (!connected) return connect();\n        if (confirm(\"Disconnect this browser from HorizenHome?\")) await logout();\n      });\n    }\n    if (token) {\n      const profile = await me();\n      if (profile) {\n        await track(\"app_opened\", { path: location.pathname });\n        setInterval(pollLock, 8000);\n      }\n    } else {\n      setButton(\"Connect Home\", \"Connect this app to HorizenHome\");\n    }\n  }\n  window.HorizenHome = { init, connect, me, track, logout, isConnected: () => connected };\n  if (document.readyState === \"loading\") document.addEventListener(\"DOMContentLoaded\", init, { once: true });\n  else init();\n})();"
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -265,37 +265,40 @@ async function api(request, env, url) {
     const supplied = request.headers.get("X-Horizen-Lock-Service") || "";
     if (!env.LOCK_SERVICE_SECRET || !same(supplied, env.LOCK_SERVICE_SECRET)) return json({ error: "Unauthorized." }, 401);
     if (url.pathname === "/api/lock/service/inspect" && request.method === "GET") {
-      const rawOrigin = url.searchParams.get("origin") || "";
-      let targetOrigin;
-      try { const parsed = new URL(rawOrigin); if (parsed.protocol !== "https:" || parsed.origin !== rawOrigin) throw new Error(); targetOrigin = parsed.origin; }
-      catch { return json({ error: "Invalid system address." }, 400); }
-      const rows = await db(env, "home_systems?select=id,system_name,system_origin,enabled,locked&system_origin=eq." + encodeURIComponent(targetOrigin) + "&limit=1");
-      const target = rows && rows[0];
-      if (!target || !target.enabled) return json({ found: false, locked: false }, 404);
+      const ticket = url.searchParams.get("ticket") || "";
+      if (ticket.length < 30 || ticket.length > 200) return json({ error: "Invalid lock ticket." }, 400);
+      const rows = await db(env, "home_system_lock_contexts?select=id,system_id,messages_user_id,expires_at,consumed_at,home_systems!home_system_lock_contexts_system_owner_fk!inner(system_name,system_origin,enabled,locked)&ticket_hash=eq." + encodeURIComponent(await sha256(ticket)) + "&limit=1");
+      const context = rows && rows[0];
+      if (!context || context.consumed_at || new Date(context.expires_at).getTime() <= Date.now()) return json({ error: "This lock link has expired. Return to the system and try again." }, 410);
+      const target = context.home_systems;
+      if (!target || !target.enabled) return json({ error: "System is unavailable." }, 404);
       return json({ found: true, locked: !!target.locked, system: target.system_name, origin: target.system_origin });
     }
     if (url.pathname === "/api/lock/service/verify" && request.method === "POST") {
       let body; try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400); }
-      if (typeof body.origin !== "string" || typeof body.password !== "string" || body.password.length > 128) return json({ error: "Invalid request." }, 400);
-      let targetOrigin;
-      try { const parsed = new URL(body.origin); if (parsed.protocol !== "https:" || parsed.origin !== body.origin) throw new Error(); targetOrigin = parsed.origin; }
-      catch { return json({ error: "Invalid system address." }, 400); }
-      const rows = await db(env, "home_systems?select=id,owner_messages_user_id,system_name,system_origin,enabled,locked,lock_password_salt,lock_password_hash&system_origin=eq." + encodeURIComponent(targetOrigin) + "&limit=1");
-      const target = rows && rows[0];
-      if (!target || !target.enabled) return json({ error: "System not found." }, 404);
-      if (!target.locked) return json({ ok: true, locked: false, redirect: target.system_origin });
+      if (typeof body.ticket !== "string" || body.ticket.length < 30 || body.ticket.length > 200 || typeof body.password !== "string" || body.password.length > 128) return json({ error: "Invalid request." }, 400);
+      const rows = await db(env, "home_system_lock_contexts?select=id,system_id,messages_user_id,expires_at,consumed_at,home_systems!home_system_lock_contexts_system_owner_fk!inner(system_name,system_origin,enabled,locked,lock_password_salt,lock_password_hash)&ticket_hash=eq." + encodeURIComponent(await sha256(body.ticket)) + "&limit=1");
+      const context = rows && rows[0];
+      if (!context || context.consumed_at || new Date(context.expires_at).getTime() <= Date.now()) return json({ error: "This lock link has expired. Return to the system and try again." }, 410);
+      const target = context.home_systems;
+      if (!target || !target.enabled) return json({ error: "System is unavailable." }, 404);
+      if (!target.locked) {
+        await db(env, "home_system_lock_contexts?id=eq." + encodeURIComponent(context.id) + "&consumed_at=is.null", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ consumed_at: new Date().toISOString() }) });
+        return json({ ok: true, locked: false, redirect: target.system_origin });
+      }
       if (!target.lock_password_hash || !target.lock_password_salt) return json({ error: "This system has no lock password configured." }, 409);
       const ip = String(body.clientIp || "unknown").slice(0, 128);
       const ipHash = await sha256(ip + ":" + env.LOCK_SERVICE_SECRET);
-      const attempts = await db(env, "home_system_lock_attempts?select=id&system_id=eq." + encodeURIComponent(target.id) + "&ip_hash=eq." + encodeURIComponent(ipHash) + "&succeeded=eq.false&attempted_at=gte." + encodeURIComponent(new Date(Date.now() - 15 * 60 * 1000).toISOString()));
+      const attempts = await db(env, "home_system_lock_attempts?select=id&system_id=eq." + encodeURIComponent(context.system_id) + "&ip_hash=eq." + encodeURIComponent(ipHash) + "&succeeded=eq.false&attempted_at=gte." + encodeURIComponent(new Date(Date.now() - 15 * 60 * 1000).toISOString()));
       if (attempts && attempts.length >= 8) return json({ error: "Too many attempts. Wait 15 minutes and try again." }, 429);
       const material = await crypto.subtle.importKey("raw", encoder.encode(body.password), "PBKDF2", false, ["deriveBits"]);
       const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: fromB64url(target.lock_password_salt), iterations: 100000, hash: "SHA-256" }, material, 256);
       const valid = same(b64url(new Uint8Array(bits)), target.lock_password_hash);
-      await db(env, "home_system_lock_attempts", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ system_id: target.id, ip_hash: ipHash, succeeded: valid }) });
+      await db(env, "home_system_lock_attempts", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ system_id: context.system_id, ip_hash: ipHash, succeeded: valid }) });
       if (!valid) return json({ error: "Incorrect password." }, 403);
-      await db(env, "home_systems?id=eq." + encodeURIComponent(target.id) + "&locked=eq.true", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ locked: false }) });
-      await db(env, "home_system_lock_messages", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ system_id: target.id, owner_messages_user_id: target.owner_messages_user_id, action: "unlock" }) });
+      await db(env, "home_systems?id=eq." + encodeURIComponent(context.system_id) + "&owner_messages_user_id=eq." + encodeURIComponent(context.messages_user_id) + "&locked=eq.true", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ locked: false }) });
+      await db(env, "home_system_lock_contexts?id=eq." + encodeURIComponent(context.id) + "&consumed_at=is.null", { method: "PATCH", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ consumed_at: new Date().toISOString() }) });
+      await db(env, "home_system_lock_messages", { method: "POST", headers: { "Prefer": "return=minimal" }, body: JSON.stringify({ system_id: context.system_id, owner_messages_user_id: context.messages_user_id, action: "unlock" }) });
       return json({ ok: true, locked: false, redirect: target.system_origin });
     }
     return json({ error: "Not found." }, 404);
@@ -303,6 +306,29 @@ async function api(request, env, url) {
 
   const identity = await authenticate(request, env);
   if (!identity) return json({ error: "Session is missing, expired, or revoked. Sign in again." }, 401, cors);
+  if (url.pathname === "/api/lock/context" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return json({ error: "Invalid request." }, 400, cors); }
+    if (!identity.system.locked) return json({ locked: false }, 200, cors);
+    let returnUrl;
+    try {
+      returnUrl = new URL(typeof body.returnUrl === "string" ? body.returnUrl : identity.system.system_origin);
+      if (returnUrl.protocol !== "https:" || returnUrl.origin !== identity.system.system_origin || returnUrl.username || returnUrl.password) throw new Error();
+    } catch { return json({ error: "Invalid return address." }, 400, cors); }
+    const ticket = randomToken(32);
+    await db(env, "home_system_lock_contexts", {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        system_id: identity.system.id,
+        messages_user_id: identity.userId,
+        ticket_hash: await sha256(ticket),
+        expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString()
+      })
+    });
+    const lockUrl = "https://secure.horizensearch.com/?ticket=" + encodeURIComponent(ticket) + "&return=" + encodeURIComponent(returnUrl.toString());
+    return json({ locked: true, url: lockUrl }, 200, cors);
+  }
+
   if (url.pathname === "/api/lock/poll" && request.method === "GET") {
     const messages = await db(env, "home_system_lock_messages?select=id,action,created_at&system_id=eq." + encodeURIComponent(identity.system.id) + "&order=created_at.desc&limit=1");
     return json({ locked: !!identity.system.locked, system: identity.system.system_name, origin: identity.system.system_origin, message: messages && messages[0] || null }, 200, cors);
