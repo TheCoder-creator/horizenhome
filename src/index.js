@@ -1,6 +1,6 @@
 const MESSAGES_URL = "https://wzfdomantqeaedfexpgq.supabase.co";
 const MESSAGES_KEY = "sb_publishable_vrz02Sm0olhxPqgc1MihJg_mrEMh7MG";
-const OAUTH_CLIENT_ID = "1c07850f-28fa-4d37-9dec-1b0ecb186baf";
+const OAUTH_CLIENT_ID = "302a7def-f3ac-493a-adf6-378256f36351";
 const OAUTH_REDIRECT = "https://home.horizensearch.com/oauth/callback";
 const SYSTEMS = Object.freeze({ HorizenHome: "https://home.horizensearch.com", HorizenAI: "https://ai.horizensearch.com" });
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
