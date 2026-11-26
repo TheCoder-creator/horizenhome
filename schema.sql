@@ -69,3 +69,30 @@ grant all on public.home_accounts to service_role;
 grant all on public.home_systems to service_role;
 grant all on public.home_system_sessions to service_role;
 grant all on public.home_events to service_role;
+
+create table if not exists public.home_system_lock_messages (
+  id uuid primary key default gen_random_uuid(),
+  system_id uuid not null references public.home_systems(id) on delete cascade,
+  owner_messages_user_id text not null,
+  action text not null check (action in ('lock','unlock')),
+  created_at timestamptz not null default now()
+);
+create index if not exists home_system_lock_messages_system_created_idx
+  on public.home_system_lock_messages (system_id, created_at desc);
+
+create table if not exists public.home_system_lock_attempts (
+  id bigint generated always as identity primary key,
+  system_id uuid not null references public.home_systems(id) on delete cascade,
+  ip_hash text not null,
+  succeeded boolean not null default false,
+  attempted_at timestamptz not null default now()
+);
+create index if not exists home_system_lock_attempts_lookup_idx
+  on public.home_system_lock_attempts (system_id, ip_hash, attempted_at desc);
+
+alter table public.home_system_lock_messages enable row level security;
+alter table public.home_system_lock_attempts enable row level security;
+revoke all on public.home_system_lock_messages from anon, authenticated;
+revoke all on public.home_system_lock_attempts from anon, authenticated;
+grant all on public.home_system_lock_messages to service_role;
+grant all on public.home_system_lock_attempts to service_role;
