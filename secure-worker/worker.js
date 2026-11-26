@@ -80,6 +80,7 @@ function headers() {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/health") return new Response(JSON.stringify({ ok: true, service: "HorizenSecure" }), { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
     if (!env.LOCK_SERVICE_SECRET || env.LOCK_SERVICE_SECRET.length < 32) {
       return new Response("Horizen Secure is not configured yet.", { status: 503, headers: headers() });
     }
@@ -87,8 +88,8 @@ export default {
     if (request.method === "GET" && url.pathname === "/") {
       const ticket = url.searchParams.get("ticket") || "";
       const { response, data } = await homeRequest("/api/lock/service/inspect?ticket=" + encodeURIComponent(ticket), env.LOCK_SERVICE_SECRET);
-      if (response.status === 404) return new Response("This Horizen system is not registered with HorizenHome.", { status: 404, headers: headers() });
-      if (!response.ok || !data.found) return new Response("Could not verify this system. Please try again later.", { status: 502, headers: headers() });
+      if (response.status === 404) return new Response("This lock link is invalid or expired.", { status: 404, headers: headers() });
+      if (!response.ok || !data.found) return new Response(data.error || "Could not verify this system. Please try again later.", { status: response.status || 502, headers: headers() });
       const returnTo = safeReturn(url.searchParams.get("return"), data.origin);
       if (!data.locked) return Response.redirect(returnTo, 302);
       return new Response(page(data.system, "", returnTo, ticket), { status: 200, headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" } });
