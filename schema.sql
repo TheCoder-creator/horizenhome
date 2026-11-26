@@ -17,6 +17,10 @@ create table if not exists public.home_systems (
   enabled boolean not null default true,
   created_at timestamptz not null default now(),
   last_seen_at timestamptz,
+  locked boolean not null default false,
+  lock_password_salt text,
+  lock_password_hash text,
+  detailed_logging boolean not null default false,
   unique (owner_messages_user_id, system_origin),
   unique (id, owner_messages_user_id)
 );
