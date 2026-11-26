@@ -250,7 +250,7 @@ async function authenticate(request, env) {
   const session = rows && rows[0];
   if (!session || session.revoked_at || new Date(session.expires_at).getTime() <= Date.now()) return null;
   const system = session.home_systems;
-  if (!system || !system.enabled || system.system_origin !== origin) return null;
+  if (!system || !system.enabled || system.locked || system.system_origin !== origin) return null;
   return { session, system, userId: session.messages_user_id, origin };
 }
 async function api(request, env, url) {
@@ -266,7 +266,7 @@ async function api(request, env, url) {
     const uid = encodeURIComponent(identity.userId);
     const [accounts, systems, sessions, events] = await Promise.all([
       db(env, "home_accounts?select=email,display_name&messages_user_id=eq." + uid + "&limit=1"),
-      db(env, "home_systems?select=id,system_name,system_origin,enabled,created_at,last_seen_at&owner_messages_user_id=eq." + uid + "&order=created_at.asc"),
+      db(env, "home_systems?select=id,system_name,system_origin,enabled,locked,lock_password_hash,detailed_logging,created_at,last_seen_at&owner_messages_user_id=eq." + uid + "&order=created_at.asc"),
       db(env, "home_system_sessions?select=id,created_at,expires_at,revoked_at,home_systems!home_session_system_owner_fk!inner(system_name,system_origin)&messages_user_id=eq." + uid + "&order=created_at.desc&limit=40"),
       db(env, "home_events?select=id,event_type,event_data,created_at,home_systems!home_event_system_owner_fk!inner(system_name)&messages_user_id=eq." + uid + "&order=created_at.desc&limit=40")
     ]);
@@ -323,6 +323,7 @@ async function api(request, env, url) {
     });
     return json({
       connected: true,
+      detailedLogging: identity.system.detailed_logging === true,
       system: identity.system.system_name,
       email: accounts && accounts[0] && accounts[0].email || null,
       displayName: accounts && accounts[0] && accounts[0].display_name || null,
@@ -336,11 +337,13 @@ async function api(request, env, url) {
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid event." }, 400, cors); }
-    const allowedTypes = new Set(["app_opened", "chat_created", "chat_sent", "chat_exported"]);
+    const allowedTypes = new Set(["app_opened", "chat_created", "chat_sent", "chat_response", "chat_exported"]);
     if (!allowedTypes.has(body.type)) return json({ error: "Event type not allowed." }, 400, cors);
     const eventData = {};
     if (typeof body.data?.hasImages === "boolean") eventData.hasImages = body.data.hasImages;
     if (typeof body.data?.path === "string") eventData.path = body.data.path.slice(0, 180).replace(/[^a-zA-Z0-9/_-]/g, "");
+    if (identity.system.detailed_logging === true && body.type === "chat_sent" && body.data?.hasImages !== true && typeof body.data?.query === "string") eventData.query = body.data.query.slice(0, 3000);
+    if (identity.system.detailed_logging === true && body.type === "chat_response" && typeof body.data?.response === "string") eventData.response = body.data.response.slice(0, 5000);
     await db(env, "home_events", {
       method: "POST",
       headers: { "Prefer": "return=minimal" },
