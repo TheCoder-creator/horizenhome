@@ -164,7 +164,7 @@ async function finishFamilyLogin(request, env, cookie, url) {
 async function finishLogin(request, env) {
   const url = new URL(request.url);
   const familyCookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "", "hz_family_oauth");
-  if (familyCookie && familyCookie.flow === "family") return await finishFamilyLogin(request, env, familyCookie, url);
+  if (familyCookie && familyCookie.flow === "family" && url.searchParams.get("state") === familyCookie.state) return await finishFamilyLogin(request, env, familyCookie, url);
   const cookie = await readSignedCookie(request, env.HOME_SIGNING_SECRET || "");
   if (!cookie || Date.now() - cookie.createdAt > 10 * 60 * 1000) {
     return html("<h2>Login expired. Return to HorizenAI and try again.</h2>", 400, { "Set-Cookie": clearCookie() });
