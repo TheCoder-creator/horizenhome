@@ -110,7 +110,7 @@ export default {
       });
       if (response.ok && data.ok && data.redirect) {
         const destination = safeReturn(returnRaw, data.redirect);
-        return new Response(unlockedPage(inspected.data.system || "Horizen system", destination), {
+        return new Response(unlockedPage("Your Horizen system", destination), {
           status: 200,
           headers: { ...headers(), "Content-Type": "text/html; charset=utf-8" }
         });
