@@ -363,7 +363,7 @@ async function api(request, env, url) {
 
   if (url.pathname === "/api/events" && request.method === "POST") {
     const length = Number(request.headers.get("Content-Length") || 0);
-    if (length > 4096) return json({ error: "Event too large." }, 413, cors);
+    if (length > 12000) return json({ error: "Event too large." }, 413, cors);
     let body;
     try { body = await request.json(); }
     catch { return json({ error: "Invalid event." }, 400, cors); }
