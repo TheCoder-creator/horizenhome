@@ -304,7 +304,8 @@ async function api(request, env, url) {
   const identity = await authenticate(request, env);
   if (!identity) return json({ error: "Session is missing, expired, or revoked. Sign in again." }, 401, cors);
   if (url.pathname === "/api/lock/poll" && request.method === "GET") {
-    return json({ locked: !!identity.system.locked, system: identity.system.system_name, origin: identity.system.system_origin }, 200, cors);
+    const messages = await db(env, "home_system_lock_messages?select=id,action,created_at&system_id=eq." + encodeURIComponent(identity.system.id) + "&order=created_at.desc&limit=1");
+    return json({ locked: !!identity.system.locked, system: identity.system.system_name, origin: identity.system.system_origin, message: messages && messages[0] || null }, 200, cors);
   }
   if (identity.system.locked) return json({ error: "This system is locked.", locked: true, lockUrl: "https://secure.horizensearch.com/?system=" + encodeURIComponent(identity.system.system_origin) }, 423, cors);
 
