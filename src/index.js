@@ -314,6 +314,36 @@ async function api(request, env, url) {
     return json({ ok: true }, 200, cors);
   }
 
+  if (url.pathname === "/api/system/lock-password" && request.method === "POST") {
+    let body; try { body = await request.json(); } catch { return json({error:"Invalid request."},400,cors); }
+    if(typeof body.id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.id)||typeof body.password!=="string"||body.password.length<10||body.password.length>128)return json({error:"Use a password between 10 and 128 characters."},400,cors);
+    const salt=randomToken(16),material=await crypto.subtle.importKey("raw",encoder.encode(body.password),"PBKDF2",false,["deriveBits"]);
+    const bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:fromB64url(salt),iterations:100000,hash:"SHA-256"},material,256),hash=b64url(new Uint8Array(bits));
+    const changed=await db(env,"home_systems?id=eq."+encodeURIComponent(body.id)+"&owner_messages_user_id=eq."+encodeURIComponent(identity.userId)+"&system_name=neq.HorizenHome",{method:"PATCH",headers:{"Prefer":"return=representation"},body:JSON.stringify({lock_password_salt:salt,lock_password_hash:hash})});
+    if(!changed||!changed.length)return json({error:"System not found, or the Home control system cannot be locked."},404,cors);return json({ok:true},200,cors);
+  }
+  if (url.pathname === "/api/system/lock" && request.method === "POST") {
+    let body;try{body=await request.json();}catch{return json({error:"Invalid request."},400,cors);}
+    if(typeof body.id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.id))return json({error:"Invalid system."},400,cors);
+    const uid=encodeURIComponent(identity.userId),id=encodeURIComponent(body.id);
+    const changed=await db(env,"home_systems?id=eq."+id+"&owner_messages_user_id=eq."+uid+"&system_name=neq.HorizenHome+"&lock_password_hash=not.is.null",{method:"PATCH",headers:{"Prefer":"return=representation"},body:JSON.stringify({locked:true})});
+    if(!changed||!changed.length)return json({error:"Set a lock password first. HorizenHome itself cannot be locked."},400,cors);
+    await db(env,"home_system_sessions?system_id=eq."+id+"&messages_user_id=eq."+uid+"&revoked_at=is.null",{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({revoked_at:new Date().toISOString()})});return json({ok:true},200,cors);
+  }
+  if (url.pathname === "/api/system/unlock" && request.method === "POST") {
+    let body;try{body=await request.json();}catch{return json({error:"Invalid request."},400,cors);}
+    if(typeof body.id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.id)||typeof body.password!=="string")return json({error:"Invalid request."},400,cors);
+    const rows=await db(env,"home_systems?select=lock_password_salt,lock_password_hash&id=eq."+encodeURIComponent(body.id)+"&owner_messages_user_id=eq."+encodeURIComponent(identity.userId)+"&system_name=neq.HorizenHome&limit=1"),target=rows&&rows[0];
+    if(!target||!target.lock_password_hash||!target.lock_password_salt)return json({error:"No lock password is configured."},400,cors);
+    const material=await crypto.subtle.importKey("raw",encoder.encode(body.password),"PBKDF2",false,["deriveBits"]),bits=await crypto.subtle.deriveBits({name:"PBKDF2",salt:fromB64url(target.lock_password_salt),iterations:100000,hash:"SHA-256"},material,256);
+    if(!same(b64url(new Uint8Array(bits)),target.lock_password_hash))return json({error:"Incorrect lock password."},403,cors);
+    await db(env,"home_systems?id=eq."+encodeURIComponent(body.id)+"&owner_messages_user_id=eq."+encodeURIComponent(identity.userId),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({locked:false})});return json({ok:true},200,cors);
+  }
+  if (url.pathname === "/api/systems/logging" && request.method === "POST") {
+    let body;try{body=await request.json();}catch{return json({error:"Invalid request."},400,cors);}
+    if(typeof body.id!=="string"||!/^[0-9a-f-]{36}$/i.test(body.id)||typeof body.enabled!=="boolean")return json({error:"Invalid setting."},400,cors);
+    await db(env,"home_systems?id=eq."+encodeURIComponent(body.id)+"&owner_messages_user_id=eq."+encodeURIComponent(identity.userId),{method:"PATCH",headers:{"Prefer":"return=minimal"},body:JSON.stringify({detailed_logging:body.enabled})});return json({ok:true},200,cors);
+  }
   if (url.pathname === "/api/me" && request.method === "GET") {
     const accounts = await db(env, "home_accounts?select=email,display_name&messages_user_id=eq." + encodeURIComponent(identity.userId) + "&limit=1");
     await db(env, "home_systems?id=eq." + identity.system.id, {
